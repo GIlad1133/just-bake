@@ -1,0 +1,39 @@
+# Environment variables and secrets - NEVER commit these!
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary test scripts
+check_*.py
+scan_*.py
+test_*.py
+fix_*.py
+verify_*.py
+process_*.py
+find_*.py
+recreate_*.py
+final_*.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

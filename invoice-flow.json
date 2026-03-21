@@ -1,0 +1,1457 @@
+{
+  "name": "Kepp invoice",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.keep.co.il/oauth2/token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "grant_type",
+              "value": "client_credentials"
+            },
+            {
+              "name": "scope",
+              "value": "seller-api"
+            },
+            {
+              "name": "client_id",
+              "value": "e510937e-7560-43a6-bb58-e7ebc674bcb1"
+            },
+            {
+              "name": "client_secret",
+              "value": "c5609c610c6bdda35faa58a9a1384219ce884bd485c02663bab8a96e7bf9dd4a"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        16,
+        -576
+      ],
+      "id": "8ecd4f3c-4abd-4ca1-8f2f-e90a94e584bd",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the token response\nconst tokenResponse = $input.first().json;\n\n// Get sheetsData from workflow variables\nconst sheetsData = $vars.currentSheetsData;\n\nconst expiresIn = tokenResponse.expires_in || 3600;\nconst expiresAt = new Date().getTime() + (expiresIn * 1000) - 60000;\n\n$vars.keepToken = {\n  access_token: tokenResponse.access_token,\n  expires_at: expiresAt\n};\n\nreturn [{ \n  token: tokenResponse.access_token, \n  sheetsData: sheetsData \n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -560
+      ],
+      "id": "9adb7e46-7ae6-41e0-8553-90514c0ab456",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -16,
+        -176
+      ],
+      "id": "059fbc9e-e7e3-4536-b0b9-5ecfd79adc34",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "84c7f02e-5eaa-447e-b733-ef0a6a168727",
+              "leftValue": "={{ $json['create invoice'] }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "28b01c21-8b32-4a98-8f20-8e9c8ec6a5fe",
+              "leftValue": "",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1040,
+        -448
+      ],
+      "id": "9e70554e-3196-4465-8b5c-c55ef3a681aa",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if token exists and is valid\nconst now = new Date().getTime();\nconst tokenData = $vars.keepToken || {};\n\n// Get the original Google Sheets data\nconst sheetsData = $input.first().json;\n\n// STORE sheets data in variables so we can access it later\n$vars.currentSheetsData = sheetsData;\n\n// Check if token exists and hasn't expired\nif (!tokenData.access_token || !tokenData.expires_at || now >= tokenData.expires_at) {\n  return [{ \n    needNewToken: true, \n    sheetsData: sheetsData \n  }];\n} else {\n  return [{ \n    needNewToken: false, \n    token: tokenData.access_token, \n    sheetsData: sheetsData \n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -592,
+        -480
+      ],
+      "id": "42601d14-33bc-46d2-8672-a465c1d8c12a",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6acf0756-c162-44d5-9a4f-d803065422be",
+              "leftValue": "={{ $json.needNewToken }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -320,
+        -464
+      ],
+      "id": "3a969325-55d1-433b-b79d-e38b72938938",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all items from the merge\nconst items = $input.all();\n\nlet token = null;\nlet sheetsData = null;\n\n// Find the token and sheetsData from the merged items\nfor (let item of items) {\n  if (item.json.token && !item.json.sheetsData) {\n    token = item.json.token;\n  }\n  if (item.json.sheetsData) {\n    sheetsData = item.json.sheetsData;\n  }\n}\n\n// Combine them into one object\nreturn [{\n  token: token,\n  sheetsData: sheetsData\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        -176
+      ],
+      "id": "c35e2bc2-f0a4-47ac-8958-39e4e2e6d33d",
+      "name": "Cpmbine token and sheet data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the input\nconst input = $input.first().json;\n\n// Extract from the correct path: payload.url (not body.payload.url)\nconst receiptUrl = input.payload?.url || 'No URL found';\nconst receiptId = input.payload?.id || '';\n\nreturn [{\n  receiptUrl: receiptUrl,\n  receiptId: receiptId,\n  status: 'success'\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        -128
+      ],
+      "id": "4bff973f-0323-4e8d-b4e1-a042b192f785",
+      "name": "Extract Receipt URL"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7dcc1078-29e2-4fb3-8f4b-67fd9156314c",
+              "name": "token",
+              "value": "={{ $json.token }}",
+              "type": "string"
+            },
+            {
+              "id": "59c37e48-a960-479b-a290-246fc998f481",
+              "name": "receiptData",
+              "value": "={{ $json.receiptData }}",
+              "type": "string"
+            },
+            {
+              "id": "05512372-ffc0-41a6-b9cb-f277b459d119",
+              "name": "customerName",
+              "value": "={{ $json.customerName }}",
+              "type": "string"
+            },
+            {
+              "id": "a36cfef3-39f7-4def-a0eb-ecae886ba439",
+              "name": "rowId",
+              "value": "={{ $json.rowId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        912,
+        -208
+      ],
+      "id": "e2b412d6-d993-4f04-a68e-09dfd94fee59",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the token and sheets data\nconst token = $input.first().json.token;\nconst data = $input.first().json.sheetsData;\n\n// Convert date string to proper format\nfunction parseDate(dateStr) {\n  if (typeof dateStr === 'string' && dateStr.includes('/')) {\n    const parts = dateStr.split('/');\n    const day = parts[0];\n    const month = parts[1];\n    const year = parts[2].length === 2 ? '20' + parts[2] : parts[2];\n    return `${year}-${month}-${day} 00:00:00`;\n  }\n  \n  if (typeof dateStr === 'number') {\n    const date = new Date((dateStr - 25569) * 86400 * 1000);\n    return date.toISOString().slice(0, 19).replace('T', ' ');\n  }\n  \n  return new Date().toISOString().slice(0, 19).replace('T', ' ');\n}\n\nconst formattedDate = parseDate(data['Date']);\n\n// Build items array - only include items with quantity > 0 AND price > 0\nconst items = [];\n\nconst itemTypes = [\n  { qtyField: 'Neapolitan Kit Qty', priceField: 'Neapolitan Kit Price', name: 'ערכה נפוליטנית' },\n  { qtyField: 'Spelt Kit Qty', priceField: 'Spelt Kit Price', name: 'ערכה כוסמין' },\n  { qtyField: 'Gluten-free Kit Qty', priceField: 'Gluten-free Kit Price', name: 'ערכה ללא גלוטן' },\n  { qtyField: 'Neapolitan Dough Qty', priceField: 'Neapolitan Dough Price', name: 'בצק נפוליטני' },\n  { qtyField: 'Spelt Dough Qty', priceField: 'Spelt Dough Price', name: 'בצק כוסמין' },\n  { qtyField: 'Gluten-free Dough Qty', priceField: 'Gluten-free Dough Price', name: 'בצק ללא גלוטן' },\n  { qtyField: 'White Sauce Qty', priceField: 'White Sauce Price', name: 'רוטב לבן' },\n  { qtyField: 'Red Sauce Qty', priceField: 'Red Sauce Price', name: 'רוטב אדום' },\n  { qtyField: 'Opening Flour Qty', priceField: 'Opening Flour Price', name: 'קמח פתיחה' },\n  { qtyField: 'Cheese Qty', priceField: 'Cheese Price', name: 'גבינה' }\n];\n\nitemTypes.forEach(itemType => {\n  const qty = parseFloat(data[itemType.qtyField]) || 0;\n  const priceInShekels = parseFloat(data[itemType.priceField]) || 0;\n  \n  // Only add if BOTH quantity AND price are greater than 0\n  if (qty > 0 && priceInShekels > 0) {\n    items.push({\n      name: itemType.name,\n      quantity: qty,\n      itemNetPrice: Math.round(priceInShekels * 100), // Convert to agorot\n      itemCurrency: \"ILS\",\n      isNoItemVat: true\n    });\n  }\n});\n\n// Validation: Throw error if no valid items\nif (items.length === 0) {\n  throw new Error(`No valid items for customer ${data['Customer Name']}. Items must have both quantity and price > 0.`);\n}\n\n// Convert total amounts to agorot\nconst totalInShekels = parseFloat(data['Amount (₪)']);\nconst totalInAgorot = Math.round(totalInShekels * 100);\n\n// Build the receipt JSON\nconst receiptData = {\n  type: \"receipt\",\n  client: {\n    name: data['Customer Name'],\n    phone: \"\"\n  },\n  docValueDate: formattedDate,\n  docLang: \"he\",\n  items: items,\n  currency: \"ILS\",\n  originTaxDeduction: 0,\n  totalAmount: totalInAgorot, // In agorot\n  totalPaid: totalInAgorot, // In agorot\n  comment: `תשלום ב${data['payment method'] || 'דיגיטלי'}`,\n  cc: {\n    date: formattedDate,\n    last4Digits: \"0000\",\n    amount: totalInAgorot // In agorot\n  }\n};\n\nreturn [{\n  token: token,\n  receiptData: receiptData,\n  customerName: data['Customer Name'],\n  rowId: data['RowId']\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -160
+      ],
+      "id": "82378fef-875f-4e41-bda0-41e92ffe07cd",
+      "name": "Build Receipt JSON"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.keep.co.il/seller/api/documents/income",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.receiptData }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        -144
+      ],
+      "id": "71001153-4209-4ed0-a04b-75e74e9cf823",
+      "name": "Create Receipt HTTP"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store data in workflow variables for later retrieval\nconst data = $input.first().json;\n\n$vars.currentCustomerName = data.customerName;\n$vars.currentRowId = data.rowId;\n\n// Pass everything through unchanged\nreturn [data];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        -144
+      ],
+      "id": "e4aa1de5-f8aa-49c3-b463-7a9a59fedb0d",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1456,
+        176
+      ],
+      "id": "8c9ba10c-63bb-4d07-8776-43cfb80fa8f9",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get both items from the merge\nconst items = $input.all();\n\n// Item 0 has receipt URL\nconst receiptData = items[0].json;\n\n// Item 1 has customer info\nconst customerData = items[1].json;\n\n// Combine into one object\nreturn [{\n  receiptUrl: receiptData.receiptUrl,\n  receiptId: receiptData.receiptId,\n  customerName: customerData.customerName,\n  rowId: customerData.rowId\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1632,
+        192
+      ],
+      "id": "74ee601c-f51a-41fe-9fc7-b964c20a0007",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg",
+          "mode": "list",
+          "cachedResultName": "PIZZA TIME",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 157810132,
+          "mode": "list",
+          "cachedResultName": "2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit#gid=157810132"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "create invoice": "Done",
+            "invoice_url": "={{ $json.receiptUrl }}",
+            "RowId": "={{ $json.rowId }}"
+          },
+          "matchingColumns": [
+            "RowId"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Amount (₪)",
+              "displayName": "Amount (₪)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "payment method",
+              "displayName": "payment method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "create invoice",
+              "displayName": "create invoice",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_url",
+              "displayName": "invoice_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Kit Qty",
+              "displayName": "Neapolitan Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Kit Price",
+              "displayName": "Neapolitan Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Kit Qty",
+              "displayName": "Spelt Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Kit Price",
+              "displayName": "Spelt Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Kit Qty",
+              "displayName": "Gluten-free Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Kit Price",
+              "displayName": "Gluten-free Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Dough Qty",
+              "displayName": "Neapolitan Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Dough Price",
+              "displayName": "Neapolitan Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Dough Qty",
+              "displayName": "Spelt Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Dough Price",
+              "displayName": "Spelt Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Dough Qty",
+              "displayName": "Gluten-free Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Dough Price",
+              "displayName": "Gluten-free Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "White Sauce Qty",
+              "displayName": "White Sauce Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "White Sauce Price",
+              "displayName": "White Sauce Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Red Sauce Qty",
+              "displayName": "Red Sauce Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Red Sauce Price",
+              "displayName": "Red Sauce Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opening Flour Qty",
+              "displayName": "Opening Flour Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opening Flour Price",
+              "displayName": "Opening Flour Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cheese Price",
+              "displayName": "Cheese Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cheese Qty",
+              "displayName": "Cheese Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "RowId",
+              "displayName": "RowId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "token",
+              "displayName": "token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "body",
+              "displayName": "body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "valid",
+              "displayName": "valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "calc_items_sum",
+              "displayName": "calc_items_sum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "amount_sheet",
+              "displayName": "amount_sheet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "delta",
+              "displayName": "delta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "validation_note",
+              "displayName": "validation_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1840,
+        176
+      ],
+      "id": "3c2cace6-ff35-4430-ab29-e55f52ff8f84",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WbWsdAaIW5BdO2ch",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1456,
+        -464
+      ],
+      "id": "2ba47c2e-d071-472e-b8da-fa17f3998fcf",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg",
+          "mode": "list",
+          "cachedResultName": "PIZZA TIME",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 157810132,
+          "mode": "list",
+          "cachedResultName": "2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit#gid=157810132"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1216,
+        -448
+      ],
+      "id": "816f75a9-d9b3-4919-a7c6-a28f0e661498",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WbWsdAaIW5BdO2ch",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -816,
+        -464
+      ],
+      "id": "d4177e9c-464c-428d-83f6-abe59b3cb776",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -352,
+        112
+      ],
+      "id": "e03c0d61-2af0-46b6-8224-952beb120585",
+      "name": "Wait",
+      "webhookId": "00f58b29-c0ac-4ef5-952a-55c993c688e4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the receipt data\nconst input = $input.first().json;\nconst token = input.token;\nconst receiptData = input.receiptData;\nconst customerName = input.customerName;\nconst rowId = input.rowId;\n\n// Parse the receiptData if it's a string\nconst receipt = typeof receiptData === 'string' ? JSON.parse(receiptData) : receiptData;\n\n// Calculate total from items\nlet calculatedTotal = 0;\nreceipt.items.forEach(item => {\n  calculatedTotal += item.quantity * item.itemNetPrice;\n});\n\n// Round to 2 decimal places\ncalculatedTotal = Math.round(calculatedTotal * 100) / 100;\nconst expectedTotal = Math.round(receipt.totalAmount * 100) / 100;\n\n// Check if totals match\nconst difference = Math.abs(calculatedTotal - expectedTotal);\n\nif (difference > 0.01) {\n  // Totals don't match - flag as error\n  return [{\n    hasError: true,\n    errorMessage: `Total mismatch: Calculated ${calculatedTotal} ₪ but sheet shows ${expectedTotal} ₪`,\n    customerName: customerName,\n    rowId: rowId\n  }];\n}\n\n// Totals match - continue normally\nreturn [{\n  hasError: false,\n  token: token,\n  receiptData: receipt,\n  customerName: customerName,\n  rowId: rowId,\n  validationStatus: 'OK'\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        -176
+      ],
+      "id": "da643c40-ebd5-4e0b-bbea-4acd8a59e211",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "82114c88-d839-4764-8740-efb3c0c2d636",
+              "leftValue": "={{ $json.hasError }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        -176
+      ],
+      "id": "df2a5253-7570-4038-a2ca-1ba37fc67faa",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg",
+          "mode": "list",
+          "cachedResultName": "PIZZA TIME",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 157810132,
+          "mode": "list",
+          "cachedResultName": "2025",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1e97e2p2Hxk2mbbuvInhk1jzylhktcEpnus0EBlmlFUg/edit#gid=157810132"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "RowId": "={{ $json.rowId }}",
+            "invoice_url": "={{ $json.errorMessage }}",
+            "create invoice": "Error"
+          },
+          "matchingColumns": [
+            "RowId"
+          ],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Customer Name",
+              "displayName": "Customer Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Amount (₪)",
+              "displayName": "Amount (₪)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "payment method",
+              "displayName": "payment method",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "create invoice",
+              "displayName": "create invoice",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_url",
+              "displayName": "invoice_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Kit Qty",
+              "displayName": "Neapolitan Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Kit Price",
+              "displayName": "Neapolitan Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Kit Qty",
+              "displayName": "Spelt Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Kit Price",
+              "displayName": "Spelt Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Kit Qty",
+              "displayName": "Gluten-free Kit Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Kit Price",
+              "displayName": "Gluten-free Kit Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Dough Qty",
+              "displayName": "Neapolitan Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Neapolitan Dough Price",
+              "displayName": "Neapolitan Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Dough Qty",
+              "displayName": "Spelt Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Spelt Dough Price",
+              "displayName": "Spelt Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Dough Qty",
+              "displayName": "Gluten-free Dough Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Gluten-free Dough Price",
+              "displayName": "Gluten-free Dough Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "White Sauce Qty",
+              "displayName": "White Sauce Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "White Sauce Price",
+              "displayName": "White Sauce Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Red Sauce Qty",
+              "displayName": "Red Sauce Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Red Sauce Price",
+              "displayName": "Red Sauce Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opening Flour Qty",
+              "displayName": "Opening Flour Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Opening Flour Price",
+              "displayName": "Opening Flour Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cheese Price",
+              "displayName": "Cheese Price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Cheese Qty",
+              "displayName": "Cheese Qty",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "RowId",
+              "displayName": "RowId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "token",
+              "displayName": "token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "body",
+              "displayName": "body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "valid",
+              "displayName": "valid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "calc_items_sum",
+              "displayName": "calc_items_sum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "amount_sheet",
+              "displayName": "amount_sheet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "delta",
+              "displayName": "delta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "validation_note",
+              "displayName": "validation_note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        784,
+        32
+      ],
+      "id": "085f9434-2f25-441a-9cb6-8a0e38f496fa",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WbWsdAaIW5BdO2ch",
+          "name": "Google Sheets account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Cpmbine token and sheet data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cpmbine token and sheet data": {
+      "main": [
+        [
+          {
+            "node": "Build Receipt JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Receipt URL": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Receipt JSON": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Receipt HTTP": {
+      "main": [
+        [
+          {
+            "node": "Extract Receipt URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create Receipt HTTP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet1": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a6d3aa82-eb32-4210-abf8-6ce8333c6de4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ad8b38546fa1efa586215fb51e85713f4d894af388ba00d3faa189f33ce488a4"
+  },
+  "id": "GBRNLRydVKoOXwBS",
+  "tags": []
+}
