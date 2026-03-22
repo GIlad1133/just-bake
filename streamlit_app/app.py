@@ -146,6 +146,34 @@ def get_spreadsheet():
         st.error(f"Failed to open spreadsheet: {e}")
         return None
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_existing_customers():
+    """Fetch existing customers with their phone numbers from Google Sheets."""
+    spreadsheet = get_spreadsheet()
+    if spreadsheet is None:
+        return {}
+
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        # Get all data (skip header row)
+        all_data = worksheet.get_all_values()[1:]
+
+        # Build customer dictionary: {customer_name: phone_number}
+        customers = {}
+        for row in all_data:
+            if len(row) >= 29:  # Make sure row has customer name (B) and phone (AC)
+                customer_name = row[1].strip()  # Column B (index 1)
+                phone = row[28].strip() if len(row) > 28 else ""  # Column AC (index 28)
+
+                # Only add if customer name exists and not already in dict
+                if customer_name and customer_name not in customers:
+                    customers[customer_name] = phone
+
+        return customers
+    except Exception as e:
+        st.warning(f"Could not load existing customers: {e}")
+        return {}
+
 def calculate_total(product_data):
     """Calculate total order amount."""
     total = 0.0
@@ -246,11 +274,42 @@ st.divider()
 # Customer Information Section
 st.subheader("Customer Information")
 
+# Load existing customers
+existing_customers = get_existing_customers()
+customer_options = ["🆕 New Customer"] + sorted(existing_customers.keys())
+
+# Customer selection with autocomplete
 col1, col2 = st.columns(2)
 with col1:
-    customer_name = st.text_input("Customer Name *", placeholder="Enter customer name")
+    selected_customer = st.selectbox(
+        "Select Customer *",
+        options=customer_options,
+        index=0,
+        help="Select existing customer or choose 'New Customer' to enter a new name"
+    )
+
+    # If "New Customer" is selected, show text input
+    if selected_customer == "🆕 New Customer":
+        customer_name = st.text_input(
+            "Customer Name *",
+            placeholder="Enter new customer name",
+            label_visibility="collapsed"
+        )
+    else:
+        customer_name = selected_customer
+        st.caption(f"✓ Selected: {customer_name}")
+
 with col2:
-    phone = st.text_input("Phone Number", placeholder="050-1234567 (optional)")
+    # Auto-fill phone if customer exists
+    default_phone = ""
+    if selected_customer != "🆕 New Customer" and selected_customer in existing_customers:
+        default_phone = existing_customers[selected_customer]
+
+    phone = st.text_input(
+        "Phone Number",
+        value=default_phone,
+        placeholder="050-1234567 (optional)"
+    )
 
 col3, col4 = st.columns(2)
 with col3:
@@ -347,11 +406,13 @@ with col_submit:
 
             if success:
                 st.success(f"✅ Order submitted successfully! Order ID: {result}")
-                # Clear form
-                st.session_state.product_data = {}
                 st.balloons()
-                # Suggest rerun to clear inputs
-                st.info("Click 'Clear Form' to enter another order")
+                # Clear form data
+                st.session_state.product_data = {}
+                # Auto-reload to clear all inputs
+                import time
+                time.sleep(2)  # Show success message for 2 seconds
+                st.rerun()
             else:
                 st.error(f"❌ Failed to submit order: {result}")
 
