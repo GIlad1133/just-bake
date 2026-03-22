@@ -262,24 +262,26 @@ for i, product in enumerate(PRODUCTS):
         qty = st.number_input(
             "Qty",
             min_value=0,
-            value=st.session_state.product_data.get(f"{prefix}_qty", 0),
+            value=st.session_state.product_data.get(f"{prefix}_qty"),
             step=1,
             key=f"{prefix}_qty",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            placeholder="0"
         )
-        st.session_state.product_data[f"{prefix}_qty"] = qty
+        st.session_state.product_data[f"{prefix}_qty"] = qty if qty is not None else 0
 
     with col_price:
         price = st.number_input(
             "Price",
             min_value=0.0,
-            value=st.session_state.product_data.get(f"{prefix}_price", 0.0),
+            value=st.session_state.product_data.get(f"{prefix}_price"),
             step=0.01,
             format="%.2f",
             key=f"{prefix}_price",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            placeholder="0.00"
         )
-        st.session_state.product_data[f"{prefix}_price"] = price
+        st.session_state.product_data[f"{prefix}_price"] = price if price is not None else 0.0
 
 st.divider()
 
