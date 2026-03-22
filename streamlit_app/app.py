@@ -71,28 +71,39 @@ def get_sheets_client():
     try:
         # Try multiple credential formats for Streamlit Cloud compatibility
         credentials_dict = None
+        method_used = None
 
-        # Method 1: Try GOOGLE_CREDENTIALS_JSON (base64 or direct JSON string in secrets)
+        # Method 1: Try GOOGLE_CREDENTIALS_JSON (direct JSON string in secrets)
         try:
             creds_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
             if creds_json:
                 credentials_dict = json.loads(creds_json)
-        except:
-            pass
+                method_used = "GOOGLE_CREDENTIALS_JSON"
+        except Exception as e:
+            # Debug: Show what went wrong with Method 1
+            if "GOOGLE_CREDENTIALS_JSON" in st.secrets:
+                st.warning(f"Method 1 failed: {e}")
 
         # Method 2: Try nested google_sheets_credentials (original TOML format)
         if not credentials_dict:
             try:
                 credentials_dict = dict(st.secrets["google_sheets_credentials"])
-            except:
-                pass
+                method_used = "google_sheets_credentials (TOML)"
+            except Exception as e:
+                # Debug: Show what went wrong with Method 2
+                if "google_sheets_credentials" in st.secrets:
+                    st.warning(f"Method 2 failed: {e}")
 
         # Method 3: Fall back to .env file (for local development)
         if not credentials_dict:
             credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
-            if not credentials_json:
-                raise ValueError("No Google Sheets credentials found in secrets or .env")
-            credentials_dict = json.loads(credentials_json)
+            if credentials_json:
+                credentials_dict = json.loads(credentials_json)
+                method_used = ".env file"
+            else:
+                # Show available secrets for debugging (without values)
+                available_secrets = list(st.secrets.keys()) if hasattr(st.secrets, 'keys') else []
+                raise ValueError(f"No Google Sheets credentials found. Available secrets: {available_secrets}")
 
         # Create credentials from the dictionary
         scopes = [
@@ -105,6 +116,11 @@ def get_sheets_client():
         )
 
         client = gspread.authorize(credentials)
+
+        # Show which method worked (only in debug/first load)
+        if method_used:
+            st.success(f"✅ Connected using: {method_used}")
+
         return client
     except Exception as e:
         st.error(f"Failed to initialize Google Sheets client: {e}")
