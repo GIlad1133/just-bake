@@ -69,11 +69,26 @@ if not check_password():
 def get_sheets_client():
     """Initialize and cache Google Sheets client using Streamlit secrets or .env."""
     try:
-        # Try Streamlit secrets first (for Streamlit Cloud deployment)
+        # Try multiple credential formats for Streamlit Cloud compatibility
+        credentials_dict = None
+
+        # Method 1: Try GOOGLE_CREDENTIALS_JSON (base64 or direct JSON string in secrets)
         try:
-            credentials_dict = st.secrets["google_sheets_credentials"]
+            creds_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
+            if creds_json:
+                credentials_dict = json.loads(creds_json)
         except:
-            # Fall back to .env file (for local development)
+            pass
+
+        # Method 2: Try nested google_sheets_credentials (original TOML format)
+        if not credentials_dict:
+            try:
+                credentials_dict = dict(st.secrets["google_sheets_credentials"])
+            except:
+                pass
+
+        # Method 3: Fall back to .env file (for local development)
+        if not credentials_dict:
             credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
             if not credentials_json:
                 raise ValueError("No Google Sheets credentials found in secrets or .env")
