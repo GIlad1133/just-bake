@@ -228,9 +228,9 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - Auto-clear only happens on success
 - Look for JavaScript errors in browser console
 
-## Admin Dashboard (`streamlit_app/admin.py`)
+## Admin Dashboard (`streamlit_app/pages/1_Admin.py`)
 
-Separate Streamlit app deployed as a second app on Streamlit Cloud.
+A page inside the same Streamlit app, accessible via the sidebar. Streamlit auto-discovers files in `pages/` and adds them to the sidebar navigation. No separate deployment needed.
 
 **Security features:**
 - Rate-limited login: lockout after `MAX_FAILED_ATTEMPTS` wrong passwords
@@ -250,7 +250,7 @@ Separate Streamlit app deployed as a second app on Streamlit Cloud.
 - Mark for invoice → Column E = "yes" (cell 5), triggers GitHub Actions automation
 - `st.cache_data.clear()` called after every write to avoid stale display
 
-**Deployment:** Deploy `streamlit_app/admin.py` as a separate Streamlit Cloud app using the same GitHub repo and same secrets as the order entry app, plus the additional `admin_password` secret.
+**Deployment:** Same app as order entry. Just add `admin_password` to the existing Streamlit Cloud secrets.
 
 ## Expansion Plans
 
