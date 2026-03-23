@@ -228,13 +228,35 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - Auto-clear only happens on success
 - Look for JavaScript errors in browser console
 
-## Future Expansion Plans
+## Admin Dashboard (`streamlit_app/admin.py`)
 
-The system is being expanded to include:
-1. **Admin Dashboard** - View orders needing attention (not paid, missing invoices)
-2. **Marketing Hub** - Instagram/Facebook integration
-3. **Customer Analytics** - Sales trends, top customers, product performance
-4. **Inventory Tracking** - Stock levels, reorder alerts
+Separate Streamlit app deployed as a second app on Streamlit Cloud.
+
+**Security features:**
+- Rate-limited login: lockout after `MAX_FAILED_ATTEMPTS` wrong passwords
+- Lockout duration: `LOCKOUT_DURATION_MINUTES` (configurable at top of file)
+- Session timeout: auto-logout after `SESSION_TIMEOUT_MINUTES` of inactivity
+- Separate `admin_password` secret (different from `app_password`)
+- `st.form()` used for login to prevent password check on every keystroke
+
+**Required Streamlit secret:** `admin_password` (set in Streamlit Cloud secrets for the admin app)
+
+**Views:**
+- "Not Paid" tab — orders where payment_method = "לא שולם", with dropdown to mark as paid
+- "Paid - No Invoice" tab — paid orders with empty invoice_url and create_invoice ≠ "yes", with button to trigger invoice creation
+
+**Data writes:**
+- Update payment method → Column D (cell 4)
+- Mark for invoice → Column E = "yes" (cell 5), triggers GitHub Actions automation
+- `st.cache_data.clear()` called after every write to avoid stale display
+
+**Deployment:** Deploy `streamlit_app/admin.py` as a separate Streamlit Cloud app using the same GitHub repo and same secrets as the order entry app, plus the additional `admin_password` secret.
+
+## Expansion Plans
+
+1. **Marketing Hub** - Instagram/Facebook integration
+2. **Customer Analytics** - Sales trends, top customers, product performance
+3. **Inventory Tracking** - Stock levels, reorder alerts
 
 When building new features:
 - Keep order entry UI simple (mobile-first)
