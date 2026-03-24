@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 import json
 import os
 from dotenv import load_dotenv
-from products import PAYMENT_METHODS
 
 load_dotenv()
 
