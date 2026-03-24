@@ -207,49 +207,11 @@ if not all_orders:
     st.info("No orders found in Google Sheets.")
     st.stop()
 
-# ─── Sidebar Filters ──────────────────────────────────────────────────────────
-
-with st.sidebar:
-    st.header("Filters")
-
-    all_methods = sorted(set(o["payment_method"] for o in all_orders if o["payment_method"]))
-
-    st.caption("**Not Paid tab** — show orders placed via:")
-    not_paid_filter = st.multiselect(
-        "Not Paid: payment methods",
-        options=all_methods,
-        default=all_methods,
-        label_visibility="collapsed",
-        key="filter_not_paid"
-    )
-
-    st.divider()
-
-    # Default: exclude cash from invoice list
-    invoice_default = [m for m in all_methods if m != "מזומן"]
-    st.caption("**No Invoice tab** — include payment methods:")
-    invoice_filter = st.multiselect(
-        "Invoice: payment methods",
-        options=all_methods,
-        default=invoice_default,
-        label_visibility="collapsed",
-        key="filter_invoice"
-    )
-    st.caption("💡 Cash excluded by default — change anytime")
-
-# ─── Filter: Not Paid ─────────────────────────────────────────────────────────
-
-not_paid = [
-    o for o in all_orders
-    if o["payment_method"] == "לא שולם"
-]
-
-# ─── Filter: Paid but No Invoice ──────────────────────────────────────────────
+not_paid = [o for o in all_orders if o["payment_method"] == "לא שולם"]
 
 paid_no_invoice = [
     o for o in all_orders
-    if o["payment_method"] != "לא שולם"
-    and o["payment_method"] in invoice_filter
+    if o["payment_method"] not in ("לא שולם", "מזומן")
     and not o["invoice_url"].strip()
     and o["create_invoice"].strip().lower() != "yes"
 ]
