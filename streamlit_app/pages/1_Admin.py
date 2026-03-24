@@ -4,12 +4,14 @@ Secure admin interface for managing orders, payments, and invoices.
 """
 
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
-import json
 import os
+import sys
 from dotenv import load_dotenv
+
+# Allow importing from parent streamlit_app/ directory
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from sheets_client import get_sheets_client, get_spreadsheet
 
 load_dotenv()
 
@@ -105,53 +107,7 @@ def check_admin_password() -> bool:
     return False
 
 # ─── Google Sheets Client ─────────────────────────────────────────────────────
-
-@st.cache_resource
-def get_sheets_client():
-    """Initialize Google Sheets client (same logic as app.py)."""
-    try:
-        credentials_dict = None
-
-        try:
-            creds_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
-            if creds_json:
-                credentials_dict = json.loads(creds_json)
-        except Exception:
-            pass
-
-        if not credentials_dict:
-            try:
-                credentials_dict = dict(st.secrets["google_sheets_credentials"])
-            except Exception:
-                pass
-
-        if not credentials_dict:
-            credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
-            if credentials_json:
-                credentials_dict = json.loads(credentials_json)
-            else:
-                raise ValueError("No Google Sheets credentials found.")
-
-        scopes = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
-        ]
-        credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
-        return gspread.authorize(credentials)
-    except Exception as e:
-        st.error(f"Failed to connect to Google Sheets: {e}")
-        return None
-
-def get_spreadsheet():
-    client = get_sheets_client()
-    if client is None:
-        return None
-    try:
-        spreadsheet_id = st.secrets.get("spreadsheet_id") or os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-        return client.open_by_key(spreadsheet_id)
-    except Exception as e:
-        st.error(f"Failed to open spreadsheet: {e}")
-        return None
+# Imported from sheets_client.py (shared with app.py so the connection is cached once)
 
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 

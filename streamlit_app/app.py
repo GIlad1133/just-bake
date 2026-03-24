@@ -12,6 +12,7 @@ import json
 import os
 from dotenv import load_dotenv
 from products import PRODUCTS, PAYMENT_METHODS
+from sheets_client import get_sheets_client, get_spreadsheet
 
 # Load environment variables for local development
 load_dotenv()
@@ -65,68 +66,6 @@ if not check_password():
     st.stop()
 
 # Initialize Google Sheets client
-@st.cache_resource
-def get_sheets_client():
-    """Initialize and cache Google Sheets client using Streamlit secrets or .env."""
-    try:
-        # Try multiple credential formats for Streamlit Cloud compatibility
-        credentials_dict = None
-
-        # Method 1: Try GOOGLE_CREDENTIALS_JSON (direct JSON string in secrets)
-        try:
-            creds_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
-            if creds_json:
-                credentials_dict = json.loads(creds_json)
-        except Exception:
-            pass
-
-        if not credentials_dict:
-            try:
-                credentials_dict = dict(st.secrets["google_sheets_credentials"])
-            except Exception:
-                pass
-
-        if not credentials_dict:
-            credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
-            if credentials_json:
-                credentials_dict = json.loads(credentials_json)
-            else:
-                raise ValueError("No Google Sheets credentials found.")
-
-        # Create credentials from the dictionary
-        scopes = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
-        ]
-        credentials = Credentials.from_service_account_info(
-            credentials_dict,
-            scopes=scopes
-        )
-
-        return gspread.authorize(credentials)
-    except Exception as e:
-        st.error(f"Failed to initialize Google Sheets client: {e}")
-        return None
-
-def get_spreadsheet():
-    """Get the PIZZA TIME spreadsheet."""
-    client = get_sheets_client()
-    if client is None:
-        return None
-
-    try:
-        # Try Streamlit secrets first, fall back to .env
-        try:
-            spreadsheet_id = st.secrets["spreadsheet_id"]
-        except:
-            spreadsheet_id = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
-            if not spreadsheet_id:
-                raise ValueError("No spreadsheet ID found in secrets or .env")
-
-        return client.open_by_key(spreadsheet_id)
-    except Exception as e:
-        st.error(f"Failed to open spreadsheet: {e}")
-        return None
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_existing_customers():
