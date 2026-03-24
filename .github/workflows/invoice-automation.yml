@@ -1,11 +1,9 @@
 name: Invoice Automation
 
 on:
-  # Run every 6 hours
-  schedule:
-    - cron: '0 */6 * * *'
-
-  # Allow manual trigger from GitHub UI
+  # Manual trigger only - re-enable schedule when invoice automation is ready
+  # schedule:
+  #   - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
