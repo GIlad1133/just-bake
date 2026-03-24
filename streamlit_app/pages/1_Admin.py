@@ -155,7 +155,6 @@ def get_spreadsheet():
 
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=60)  # Refresh every 60 seconds
 def load_all_orders():
     """Load all orders from Google Sheets."""
     spreadsheet = get_spreadsheet()
