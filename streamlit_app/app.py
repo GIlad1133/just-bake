@@ -20,7 +20,7 @@ load_dotenv()
 st.set_page_config(
     page_title="Just Bake - New Order",
     page_icon="🍕",
-    layout="centered"
+    layout="wide"
 )
 
 # Password Protection

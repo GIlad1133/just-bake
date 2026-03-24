@@ -13,12 +13,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-st.set_page_config(
-    page_title="Just Bake - Admin",
-    page_icon="🔐",
-    layout="wide"
-)
-
 # ─── Security Configuration ───────────────────────────────────────────────────
 
 MAX_FAILED_ATTEMPTS = 5       # Lock out after this many wrong passwords
