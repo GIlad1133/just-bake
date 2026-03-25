@@ -9,9 +9,13 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Allow importing from parent streamlit_app/ directory
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# Allow importing from streamlit_app/ and project root (for src/)
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))           # streamlit_app/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))  # project root
 from sheets_client import get_sheets_client, get_spreadsheet
+from src.google_sheets import GoogleSheetsClient
+from src.keep_client import KeepClient
+from src.invoice_processor import InvoiceProcessor
 
 load_dotenv()
 
@@ -165,19 +169,41 @@ def update_payment_method(row_number: int, new_method: str) -> bool:
         st.error(f"Failed to update payment: {e}")
         return False
 
-def mark_for_invoice(row_number: int) -> bool:
-    """Set 'create invoice' = 'yes' to trigger invoice automation (Column E = index 4)."""
-    spreadsheet = get_spreadsheet()
-    if not spreadsheet:
-        return False
+def create_invoice_now(row_number: int) -> tuple:
+    """Create invoice immediately via Keep.co.il API."""
     try:
-        worksheet = spreadsheet.get_worksheet(0)
-        worksheet.update_cell(row_number, 5, "yes")  # Column E
+        credentials_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
+        spreadsheet_id = st.secrets.get("spreadsheet_id")
+        keep_client_id = st.secrets.get("keep_client_id")
+        keep_client_secret = st.secrets.get("keep_client_secret")
+        keep_api_base_url = st.secrets.get("keep_api_base_url", "https://app.keep.co.il")
+
+        if not keep_client_id or not keep_client_secret:
+            return False, "Keep.co.il credentials not set in Streamlit secrets (keep_client_id, keep_client_secret)"
+
+        # Mark row as ready for processing
+        sheets = GoogleSheetsClient(credentials_json, spreadsheet_id)
+        sheets.worksheet.update_cell(row_number, 5, "yes")
+
+        # Find and process just this order
+        pending = sheets.get_pending_orders()
+        order = next((o for o in pending if o.sheet_row_number == row_number), None)
+
+        if not order:
+            return False, "Could not read order data from sheet"
+
+        keep = KeepClient(keep_client_id, keep_client_secret, keep_api_base_url)
+        processor = InvoiceProcessor(sheets, keep)
+        success = processor._process_single_order(order, stop_on_validation_error=False)
+
         st.cache_data.clear()
-        return True
+        if success:
+            return True, "✅ Invoice created!"
+        else:
+            return False, "Invoice failed — check the Status column in Google Sheets"
+
     except Exception as e:
-        st.error(f"Failed to mark for invoice: {e}")
-        return False
+        return False, str(e)
 
 # ─── Main Admin UI ────────────────────────────────────────────────────────────
 
@@ -264,9 +290,13 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
 
                 if allow_invoice_trigger:
                     if st.button("🧾 Create Invoice", key=f"btn_inv_{order['row']}", use_container_width=True):
-                        if mark_for_invoice(order["row"]):
-                            st.success("Marked for invoice creation!")
+                        with st.spinner("Creating invoice..."):
+                            success, msg = create_invoice_now(order["row"])
+                        if success:
+                            st.success(msg)
                             st.rerun()
+                        else:
+                            st.error(msg)
 
                 if order["invoice_url"]:
                     st.link_button("📄 View Invoice", order["invoice_url"], use_container_width=True)
