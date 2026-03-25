@@ -211,7 +211,8 @@ not_paid = [o for o in all_orders if o["payment_method"] == "לא שולם"]
 
 include_cash = st.sidebar.checkbox("Include cash orders in No Invoice tab", value=False)
 
-excluded = ("לא שולם",) if include_cash else ("לא שולם", "מזומן")
+CASH_VALUES = ("מזומן", "cash", "Cash")
+excluded = ("לא שולם",) if include_cash else ("לא שולם", *CASH_VALUES)
 paid_no_invoice = [
     o for o in all_orders
     if o["payment_method"] not in excluded
