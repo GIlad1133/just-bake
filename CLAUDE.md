@@ -228,6 +228,15 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
 - Auto-clear only happens on success
 - Look for JavaScript errors in browser console
 
+## Shared Sheets Client (`streamlit_app/sheets_client.py`)
+
+Single `@st.cache_resource` function shared across all pages. **Critical:** Never define `get_sheets_client()` separately in multiple page files — Streamlit treats them as different cache entries, causing duplicate connections or hangs. Always import from `sheets_client.py`.
+
+**Rules learned the hard way:**
+- Never call `st.success/warning/error` inside `@st.cache_resource` — causes infinite spinner
+- Never call `@st.cache_resource` functions from inside `@st.cache_data` functions — deadlocks
+- Pages in `pages/` cannot call `st.set_page_config()` — only `app.py` can
+
 ## Admin Dashboard (`streamlit_app/pages/1_Admin.py`)
 
 A page inside the same Streamlit app, accessible via the sidebar. Streamlit auto-discovers files in `pages/` and adds them to the sidebar navigation. No separate deployment needed.
@@ -239,18 +248,22 @@ A page inside the same Streamlit app, accessible via the sidebar. Streamlit auto
 - Separate `admin_password` secret (different from `app_password`)
 - `st.form()` used for login to prevent password check on every keystroke
 
-**Required Streamlit secret:** `admin_password` (set in Streamlit Cloud secrets for the admin app)
-
 **Views:**
 - "Not Paid" tab — orders where payment_method = "לא שולם", with dropdown to mark as paid
-- "Paid - No Invoice" tab — paid orders with empty invoice_url and create_invoice ≠ "yes", with button to trigger invoice creation
+- "Paid - No Invoice" tab — excludes cash (`מזומן`, `cash`, `Cash`) by default; sidebar checkbox to include. Paid orders with empty invoice_url and create_invoice ≠ "yes"
+
+**Invoice creation (button):**
+- Calls Keep.co.il API **immediately** — no GitHub Actions needed
+- Imports `GoogleSheetsClient`, `KeepClient`, `InvoiceProcessor` from `src/`
+- Uses `sys.path` manipulation to reach project root from `pages/` subdirectory
+- Requires `keep_client_id`, `keep_client_secret`, `keep_api_base_url` in Streamlit secrets
 
 **Data writes:**
 - Update payment method → Column D (cell 4)
-- Mark for invoice → Column E = "yes" (cell 5), triggers GitHub Actions automation
+- Create invoice → sets Column E = "yes", then immediately calls Keep.co.il API
 - `st.cache_data.clear()` called after every write to avoid stale display
 
-**Deployment:** Same app as order entry. Just add `admin_password` to the existing Streamlit Cloud secrets.
+**Required Streamlit secrets:** `admin_password`, `keep_client_id`, `keep_client_secret`, `keep_api_base_url`
 
 ## Expansion Plans
 
