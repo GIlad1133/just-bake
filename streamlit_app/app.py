@@ -4,344 +4,291 @@ Streamlit web app for entering new pizza orders.
 """
 
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 from datetime import datetime
 import uuid
-import json
 import os
 from dotenv import load_dotenv
 from products import PRODUCTS, PAYMENT_METHODS
 from sheets_client import get_sheets_client, get_spreadsheet
 
-# Load environment variables for local development
 load_dotenv()
 
-# Page configuration
 st.set_page_config(
     page_title="Just Bake - New Order",
     page_icon="🍕",
     layout="wide"
 )
 
-# Password Protection
-def check_password():
-    """Returns True if the user had the correct password."""
+# ─── Password Protection ──────────────────────────────────────────────────────
 
+def check_password():
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
         if st.session_state["password"] == st.secrets.get("app_password", "justbake2024"):
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show password input
         st.title("🍕 Just Bake - Login")
-        st.text_input(
-            "Password",
-            type="password",
-            on_change=password_entered,
-            key="password"
-        )
+        st.text_input("Password", type="password", on_change=password_entered, key="password")
         st.info("Enter the password to access the order entry system")
         return False
     elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error
         st.title("🍕 Just Bake - Login")
-        st.text_input(
-            "Password",
-            type="password",
-            on_change=password_entered,
-            key="password"
-        )
+        st.text_input("Password", type="password", on_change=password_entered, key="password")
         st.error("😕 Password incorrect")
         return False
-    else:
-        # Password correct
-        return True
+    return True
 
 if not check_password():
     st.stop()
 
-# Initialize Google Sheets client
+# ─── Form Version Counter (reliable form clear) ───────────────────────────────
+# Incrementing this changes all widget keys, forcing Streamlit to recreate them fresh.
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+if "form_version" not in st.session_state:
+    st.session_state.form_version = 0
+
+v = st.session_state.form_version  # short alias used in all widget keys
+
+# ─── Customer Data ────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=300)
 def get_existing_customers():
-    """Fetch existing customers with their phone numbers from Google Sheets."""
+    """
+    Returns {customer_name: {"phone": ..., "prices": {prefix: price}}}
+    Reads last order per customer to pre-fill prices.
+    """
     spreadsheet = get_spreadsheet()
     if spreadsheet is None:
         return {}
-
     try:
         worksheet = spreadsheet.get_worksheet(0)
-        # Get all data (skip header row)
         all_data = worksheet.get_all_values()[1:]
 
-        # Build customer dictionary: {customer_name: phone_number}
         customers = {}
         for row in all_data:
-            if len(row) >= 29:  # Make sure row has customer name (B) and phone (AC)
-                customer_name = row[1].strip()  # Column B (index 1)
-                phone = row[28].strip() if len(row) > 28 else ""  # Column AC (index 28)
+            name = row[1].strip() if len(row) > 1 else ""
+            if not name:
+                continue
+            phone = row[28].strip() if len(row) > 28 else ""
 
-                # Only add if customer name exists and not already in dict
-                if customer_name and customer_name not in customers:
-                    customers[customer_name] = phone
+            # Extract last price per product (overwrite to keep most recent)
+            prices = {}
+            for i, product in enumerate(PRODUCTS):
+                prefix = product["column_prefix"]
+                if i == 9:  # Cheese: price first (col Y=24), qty second (col Z=25)
+                    price_idx = 24
+                else:
+                    price_idx = 6 + 2 * i + 1  # H,J,L,N,P,R,T,V,X
 
+                try:
+                    val = float(row[price_idx]) if len(row) > price_idx and row[price_idx] else 0.0
+                    if val > 0:
+                        prices[f"{prefix}_price"] = val
+                except (ValueError, IndexError):
+                    pass
+
+            customers[name] = {"phone": phone, "prices": prices}
         return customers
     except Exception as e:
         st.warning(f"Could not load existing customers: {e}")
         return {}
 
+# ─── Order Logic ──────────────────────────────────────────────────────────────
+
 def calculate_total(product_data):
-    """Calculate total order amount."""
     total = 0.0
     for product in PRODUCTS:
         prefix = product["column_prefix"]
-        qty = product_data.get(f"{prefix}_qty", 0)
-        price = product_data.get(f"{prefix}_price", 0.0)
+        qty = product_data.get(f"{prefix}_qty") or 0
+        price = product_data.get(f"{prefix}_price") or 0.0
         total += qty * price
     return total
 
-def validate_order(customer_name, product_data):
-    """Validate order data before submission."""
-    errors = []
-
-    # Check customer name
-    if not customer_name or not customer_name.strip():
-        errors.append("Customer name is required")
-
-    # Check if at least one product has quantity and price
-    has_items = False
-    for product in PRODUCTS:
-        prefix = product["column_prefix"]
-        qty = product_data.get(f"{prefix}_qty", 0)
-        price = product_data.get(f"{prefix}_price", 0.0)
-        if qty > 0 and price > 0:
-            has_items = True
-            break
-
-    if not has_items:
-        errors.append("At least one product must have quantity and price greater than 0")
-
-    return errors
-
 def submit_order(customer_name, order_date, payment_method, product_data, phone="", business_id=""):
-    """Submit order to Google Sheets."""
     spreadsheet = get_spreadsheet()
     if spreadsheet is None:
         return False, "Failed to connect to Google Sheets"
-
     try:
-        # Get the first worksheet (or specify sheet name if needed)
         worksheet = spreadsheet.get_worksheet(0)
-
-        # Generate unique row ID
         row_id = str(uuid.uuid4())
-
-        # Calculate total
         total = calculate_total(product_data)
-
-        # Format date as DD/MM/YYYY
         formatted_date = order_date.strftime("%d/%m/%Y")
 
-        # Build row data - matched to your PIZZA TIME 2026 sheet structure
-        # A: Date, B: Customer Name, C: Amount, D: Payment Method, E: Create Invoice, F: Invoice URL
         row_data = [
-            formatted_date,                            # A: Date
-            customer_name,                             # B: Customer Name
-            total,                                     # C: Amount (₪)
-            PAYMENT_METHODS[payment_method],           # D: payment method
-            "",                                        # E: create invoice (empty by default)
-            "",                                        # F: invoice_url (empty, filled by automation)
+            formatted_date,
+            customer_name,
+            total,
+            PAYMENT_METHODS[payment_method],
+            "",   # create invoice
+            "",   # invoice_url
         ]
 
-        # Add product quantities and prices (G through Z)
-        # G-H: Neapolitan Kit, I-J: Spelt Kit, K-L: Gluten-free Kit,
-        # M-N: Neapolitan Dough, O-P: Spelt Dough, Q-R: Gluten-free Dough,
-        # S-T: White Sauce, U-V: Red Sauce, W-X: Opening Flour
         for i, product in enumerate(PRODUCTS):
             prefix = product["column_prefix"]
+            if i == 9:  # Cheese: Price then Qty
+                row_data.append(product_data.get(f"{prefix}_price") or 0.0)
+                row_data.append(product_data.get(f"{prefix}_qty") or 0)
+            else:
+                row_data.append(product_data.get(f"{prefix}_qty") or 0)
+                row_data.append(product_data.get(f"{prefix}_price") or 0.0)
 
-            # Special case: Cheese (last product) has SWAPPED columns (Price, Qty)
-            if i == 9:  # Cheese
-                row_data.append(product_data.get(f"{prefix}_price", 0.0))  # Y: Cheese Price
-                row_data.append(product_data.get(f"{prefix}_qty", 0))      # Z: Cheese Qty
-            else:  # All other products: Qty, Price
-                row_data.append(product_data.get(f"{prefix}_qty", 0))
-                row_data.append(product_data.get(f"{prefix}_price", 0.0))
-
-        # AA: RowId, AB: Status, AC: Phone, AD: Business ID
-        row_data.append(row_id)                        # AA: RowId
-        row_data.append("")                            # AB: Status (empty, filled by automation on error)
-        row_data.append(phone or "")                   # AC: Phone Number
-        row_data.append(business_id or "")             # AD: Business ID
-
-        # Append row to sheet
+        row_data += [row_id, "", phone or "", business_id or ""]
         worksheet.append_row(row_data)
-
         return True, row_id
-
     except Exception as e:
         return False, str(e)
 
-# Main UI
-st.title("🍕 Just Bake - New Order Entry")
-st.markdown("**Pashut La'afot** - Neapolitan Pizza Ordering System")
+# ─── Main UI ──────────────────────────────────────────────────────────────────
+
+st.title("🍕 Just Bake - New Order")
 st.divider()
 
-# Customer Information Section
-st.subheader("Customer Information")
+# ─── Customer ─────────────────────────────────────────────────────────────────
 
-# Load existing customers
 existing_customers = get_existing_customers()
 customer_options = ["🆕 New Customer"] + sorted(existing_customers.keys())
 
-# Customer selection with autocomplete
 col1, col2 = st.columns(2)
 with col1:
     selected_customer = st.selectbox(
-        "Select Customer *",
+        "Customer *",
         options=customer_options,
-        index=0,
-        help="Select existing customer or choose 'New Customer' to enter a new name"
+        key=f"v{v}_customer"
     )
-
-    # If "New Customer" is selected, show text input
     if selected_customer == "🆕 New Customer":
         customer_name = st.text_input(
-            "Customer Name *",
-            placeholder="Enter new customer name",
-            label_visibility="collapsed"
+            "Name *",
+            placeholder="Enter customer name",
+            key=f"v{v}_customer_name"
         )
     else:
         customer_name = selected_customer
-        st.caption(f"✓ Selected: {customer_name}")
 
 with col2:
-    # Auto-fill phone if customer exists
     default_phone = ""
     if selected_customer != "🆕 New Customer" and selected_customer in existing_customers:
-        default_phone = existing_customers[selected_customer]
-
+        default_phone = existing_customers[selected_customer]["phone"]
     phone = st.text_input(
-        "Phone Number",
+        "Phone",
         value=default_phone,
-        placeholder="050-1234567 (optional)"
+        placeholder="050-1234567",
+        key=f"v{v}_phone"
     )
 
 col3, col4 = st.columns(2)
 with col3:
-    order_date = st.date_input("Order Date *", value=datetime.now())
+    order_date = st.date_input("Date *", value=datetime.now(), key=f"v{v}_date")
 with col4:
     payment_method = st.selectbox(
-        "Payment Method *",
+        "Payment *",
         options=list(PAYMENT_METHODS.keys()),
-        format_func=lambda x: PAYMENT_METHODS[x]
+        format_func=lambda x: PAYMENT_METHODS[x],
+        key=f"v{v}_payment"
     )
 
-# Business customer section (optional)
-with st.expander("🏢 Business Customer (B2B) - Optional"):
+with st.expander("🏢 Business Customer (optional)"):
     business_id = st.text_input(
-        "Business ID (ח.פ. / עוסק מורשה)",
-        placeholder="e.g., 123456789",
-        help="Leave empty for regular customers. Fill in for business customers who need tax invoice."
+        "Business ID (ח.פ.)",
+        placeholder="123456789",
+        key=f"v{v}_business_id"
     )
 
 st.divider()
 
-# Products Section
+# ─── Products ─────────────────────────────────────────────────────────────────
+
 st.subheader("Products")
 
-# Initialize session state for product data if not exists
-if 'product_data' not in st.session_state:
-    st.session_state.product_data = {}
+# Pre-fill prices from customer's last order
+last_prices = {}
+if selected_customer != "🆕 New Customer" and selected_customer in existing_customers:
+    last_prices = existing_customers[selected_customer].get("prices", {})
 
-# Create product input grid
+product_data = {}
+
 for i, product in enumerate(PRODUCTS):
     prefix = product["column_prefix"]
 
-    # Create columns for product row
     col_name, col_qty, col_price = st.columns([3, 1, 1.5])
 
     with col_name:
-        st.markdown(f"**{product['hebrew']}** _{product['name']}_")
+        st.markdown(f"**{product['hebrew']}**  \n_{product['name']}_")
 
     with col_qty:
         qty = st.number_input(
             "Qty",
             min_value=0,
-            value=st.session_state.product_data.get(f"{prefix}_qty"),
+            value=None,
             step=1,
-            key=f"{prefix}_qty",
+            key=f"v{v}_{prefix}_qty",
             label_visibility="collapsed",
             placeholder="0"
         )
-        st.session_state.product_data[f"{prefix}_qty"] = qty if qty is not None else 0
 
     with col_price:
+        default_price = last_prices.get(f"{prefix}_price", None)
         price = st.number_input(
             "Price",
             min_value=0.0,
-            value=st.session_state.product_data.get(f"{prefix}_price"),
-            step=0.01,
+            value=default_price,
+            step=0.5,
             format="%.2f",
-            key=f"{prefix}_price",
+            key=f"v{v}_{prefix}_price",
             label_visibility="collapsed",
             placeholder="0.00"
         )
-        st.session_state.product_data[f"{prefix}_price"] = price if price is not None else 0.0
+
+    product_data[f"{prefix}_qty"] = qty or 0
+    product_data[f"{prefix}_price"] = price or 0.0
 
 st.divider()
 
-# Total Display
-total = calculate_total(st.session_state.product_data)
+total = calculate_total(product_data)
 st.markdown(f"### Total: ₪{total:.2f}")
 
 st.divider()
 
-# Submit Button
-col_submit, col_clear = st.columns([1, 1])
+# ─── Submit / Clear ───────────────────────────────────────────────────────────
+
+col_submit, col_clear = st.columns(2)
 
 with col_submit:
     if st.button("📝 Submit Order", type="primary", use_container_width=True):
-        # Validate order
-        errors = validate_order(customer_name, st.session_state.product_data)
+        errors = []
+        if not customer_name or not customer_name.strip():
+            errors.append("Customer name is required")
+        if not any(
+            (product_data.get(f"{p['column_prefix']}_qty") or 0) > 0 and
+            (product_data.get(f"{p['column_prefix']}_price") or 0) > 0
+            for p in PRODUCTS
+        ):
+            errors.append("At least one product must have quantity and price")
 
         if errors:
-            for error in errors:
-                st.error(error)
+            for e in errors:
+                st.error(e)
         else:
-            # Submit order
-            with st.spinner("Submitting order..."):
+            with st.spinner("Submitting..."):
                 success, result = submit_order(
-                    customer_name,
-                    order_date,
-                    payment_method,
-                    st.session_state.product_data,
-                    phone,
-                    business_id
+                    customer_name, order_date, payment_method,
+                    product_data, phone, business_id
                 )
-
             if success:
-                st.success(f"✅ Order submitted successfully! Order ID: {result}")
+                st.success("✅ Order submitted!")
                 st.balloons()
-                # Clear form data
-                st.session_state.product_data = {}
-                # Auto-reload to clear all inputs
-                import time
-                time.sleep(2)  # Show success message for 2 seconds
+                import time; time.sleep(1.5)
+                st.session_state.form_version += 1
                 st.rerun()
             else:
-                st.error(f"❌ Failed to submit order: {result}")
+                st.error(f"❌ Failed: {result}")
 
 with col_clear:
     if st.button("🗑️ Clear Form", use_container_width=True):
-        st.session_state.product_data = {}
+        st.session_state.form_version += 1
         st.rerun()
 
-# Footer
 st.divider()
-st.caption("Just Bake Invoice Automation System • Built with Streamlit")
+st.caption("Just Bake • Pashut La'afot 🍕")
