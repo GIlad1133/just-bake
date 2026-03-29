@@ -2,6 +2,7 @@
 
 # Web UI framework
 streamlit>=1.41.0
+Authlib>=1.3.2
 
 # Google Sheets API
 gspread>=5.12.0
