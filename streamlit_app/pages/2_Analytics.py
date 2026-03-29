@@ -46,9 +46,15 @@ def load_data() -> pd.DataFrame:
     for row in rows[1:]:
         if len(row) < 3 or not row[1].strip():
             continue
-        try:
-            date = datetime.strptime(row[0].strip(), "%d/%m/%Y")
-        except ValueError:
+        raw_date = row[0].strip()
+        date = None
+        for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+            try:
+                date = datetime.strptime(raw_date, fmt)
+                break
+            except ValueError:
+                continue
+        if date is None:
             continue
 
         try:
