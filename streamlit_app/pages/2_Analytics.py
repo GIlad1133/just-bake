@@ -101,6 +101,8 @@ with col_f1:
 with col_f2:
     months_back = st.selectbox("Show last", [3, 6, 12, 24, 9999], format_func=lambda x: "All time" if x == 9999 else f"{x} months", index=1)
 
+df["date"] = pd.to_datetime(df["date"])
+
 if months_back != 9999:
     cutoff = pd.Timestamp.now() - pd.DateOffset(months=months_back)
     df = df[df["date"] >= cutoff]
