@@ -222,34 +222,55 @@ with tab3:
     st.subheader("מעקב קבוצות פייסבוק")
     st.caption("סמן אילו קבוצות פרסמת השבוע")
 
-    raw_groups = st.secrets.get("facebook_groups", "")
-    groups = [g.strip() for g in raw_groups.split(",") if g.strip()] if raw_groups else []
+    # Load group categories from secrets: [facebook_groups] section
+    # Each key = category name, value = comma-separated group names
+    try:
+        categories: dict = dict(st.secrets["facebook_groups"])
+    except Exception:
+        categories = {}
 
-    if not groups:
-        st.warning("לא הוגדרו קבוצות. הוסף `facebook_groups` ל-Streamlit secrets:")
-        st.code('facebook_groups = "שם קבוצה 1, שם קבוצה 2, שם קבוצה 3"')
+    if not categories:
+        st.warning("לא הוגדרו קבוצות. הוסף ל-Streamlit secrets:")
+        st.code(
+            '[facebook_groups]\n'
+            '"קבוצות טאבון" = "פיצה ביתית ישראל, אוהבי טאבון"\n'
+            '"קבוצות פתח תקווה" = "פ״ת קהילה, קניות ומכירות פ״ת"\n'
+            '"קבוצות אפייה" = "אפייה ביתית, לחם ובצק"'
+        )
     else:
         if "group_checks" not in st.session_state:
             st.session_state.group_checks = {}
 
-        for group in groups:
-            checked = st.checkbox(
-                group,
-                key=f"grp_{group}",
-                value=st.session_state.group_checks.get(group, False)
-            )
-            st.session_state.group_checks[group] = checked
+        total_all = 0
+        posted_all = 0
 
-        posted = sum(1 for v in st.session_state.group_checks.values() if v)
-        total = len(groups)
+        for category, raw in categories.items():
+            groups = [g.strip() for g in raw.split(",") if g.strip()]
+            if not groups:
+                continue
+
+            posted_cat = sum(1 for g in groups if st.session_state.group_checks.get(g, False))
+            total_cat = len(groups)
+            total_all += total_cat
+            posted_all += posted_cat
+
+            label = f"**{category}** ({posted_cat}/{total_cat})"
+            with st.expander(label, expanded=(posted_cat < total_cat)):
+                for group in groups:
+                    checked = st.checkbox(
+                        group,
+                        key=f"grp_{group}",
+                        value=st.session_state.group_checks.get(group, False)
+                    )
+                    st.session_state.group_checks[group] = checked
 
         st.divider()
-        st.progress(posted / total if total > 0 else 0)
+        st.progress(posted_all / total_all if total_all > 0 else 0)
 
-        if posted == total:
-            st.success(f"✅ פרסמת בכל {total} הקבוצות השבוע!")
+        if posted_all == total_all:
+            st.success(f"✅ פרסמת בכל {total_all} הקבוצות השבוע!")
         else:
-            st.info(f"פרסמת ב-{posted} מתוך {total} קבוצות — נשארו {total - posted}")
+            st.info(f"פרסמת ב-{posted_all} מתוך {total_all} קבוצות — נשארו {total_all - posted_all}")
 
         if st.button("🔄 איפוס לשבוע חדש", use_container_width=True):
             st.session_state.group_checks = {}
