@@ -19,30 +19,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# ─── Password Protection ──────────────────────────────────────────────────────
+# ─── Google OAuth Authentication ──────────────────────────────────────────────
 
-def check_password():
-    def password_entered():
-        if st.session_state["password"] == st.secrets.get("app_password", "justbake2024"):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
+def require_auth():
+    """Gate the app behind Google OAuth. Stops execution if not authorized."""
+    if not st.user.is_logged_in:
         st.title("🍕 Just Bake - Login")
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        st.info("Enter the password to access the order entry system")
-        return False
-    elif not st.session_state["password_correct"]:
-        st.title("🍕 Just Bake - Login")
-        st.text_input("Password", type="password", on_change=password_entered, key="password")
-        st.error("😕 Password incorrect")
-        return False
-    return True
+        st.info("Log in with your Google account to access the order system.")
+        st.login("google")
+        st.stop()
 
-if not check_password():
-    st.stop()
+    allowed = [e.strip() for e in st.secrets.get("allowed_emails", "").split(",") if e.strip()]
+    if allowed and st.user.email not in allowed:
+        st.error(f"❌ Access denied: {st.user.email} is not authorized.")
+        if st.button("Log out"):
+            st.logout()
+        st.stop()
+
+require_auth()
 
 # ─── Form Version Counter (reliable form clear) ───────────────────────────────
 # Incrementing this changes all widget keys, forcing Streamlit to recreate them fresh.

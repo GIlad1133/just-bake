@@ -4,7 +4,7 @@ Secure admin interface for managing orders, payments, and invoices.
 """
 
 import streamlit as st
-from datetime import datetime, timedelta, date
+from datetime import datetime, date
 import os
 import sys
 from dotenv import load_dotenv
@@ -20,96 +20,22 @@ from src.invoice_processor import InvoiceProcessor
 
 load_dotenv()
 
-# ─── Security Configuration ───────────────────────────────────────────────────
+# ─── Google OAuth Authentication ──────────────────────────────────────────────
 
-MAX_FAILED_ATTEMPTS = 5       # Lock out after this many wrong passwords
-LOCKOUT_DURATION_MINUTES = 15 # How long the lockout lasts
-SESSION_TIMEOUT_MINUTES = 30  # Auto-logout after inactivity
+def require_auth():
+    """Gate the admin page behind Google OAuth. Stops execution if not authorized."""
+    if not st.user.is_logged_in:
+        st.title("🔐 Just Bake - Admin")
+        st.info("Log in with your Google account to access the admin dashboard.")
+        st.login("google")
+        st.stop()
 
-# ─── Security Layer ───────────────────────────────────────────────────────────
-
-def init_security_state():
-    """Initialize security-related session state."""
-    if "admin_authenticated" not in st.session_state:
-        st.session_state.admin_authenticated = False
-    if "failed_attempts" not in st.session_state:
-        st.session_state.failed_attempts = 0
-    if "lockout_until" not in st.session_state:
-        st.session_state.lockout_until = None
-    if "last_activity" not in st.session_state:
-        st.session_state.last_activity = datetime.now()
-
-def is_locked_out() -> bool:
-    """Check if the user is currently locked out."""
-    if st.session_state.lockout_until is None:
-        return False
-    if datetime.now() < st.session_state.lockout_until:
-        return True
-    # Lockout expired — reset
-    st.session_state.lockout_until = None
-    st.session_state.failed_attempts = 0
-    return False
-
-def is_session_expired() -> bool:
-    """Check if the admin session has timed out due to inactivity."""
-    if not st.session_state.admin_authenticated:
-        return False
-    elapsed = datetime.now() - st.session_state.last_activity
-    return elapsed > timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-
-def record_activity():
-    """Update last activity timestamp to keep session alive."""
-    st.session_state.last_activity = datetime.now()
-
-def check_admin_password() -> bool:
-    """
-    Secure admin login with rate limiting and lockout.
-    Returns True if authenticated.
-    """
-    init_security_state()
-
-    # Session timeout check
-    if is_session_expired():
-        st.session_state.admin_authenticated = False
-        st.warning("⏱️ Session expired. Please log in again.")
-
-    if st.session_state.admin_authenticated:
-        record_activity()
-        return True
-
-    st.title("🔐 Just Bake - Admin")
-
-    # Lockout check
-    if is_locked_out():
-        remaining = (st.session_state.lockout_until - datetime.now()).seconds // 60 + 1
-        st.error(f"🔒 Too many failed attempts. Try again in {remaining} minute(s).")
-        return False
-
-    # Show remaining attempts warning
-    if st.session_state.failed_attempts > 0:
-        remaining_attempts = MAX_FAILED_ATTEMPTS - st.session_state.failed_attempts
-        st.warning(f"⚠️ {remaining_attempts} attempt(s) remaining before lockout.")
-
-    with st.form("admin_login"):
-        password = st.text_input("Admin Password", type="password")
-        submitted = st.form_submit_button("Login", use_container_width=True)
-
-    if submitted:
-        admin_password = st.secrets.get("admin_password", "")
-        if password == admin_password and admin_password != "":
-            st.session_state.admin_authenticated = True
-            st.session_state.failed_attempts = 0
-            st.session_state.last_activity = datetime.now()
-            st.rerun()
-        else:
-            st.session_state.failed_attempts += 1
-            if st.session_state.failed_attempts >= MAX_FAILED_ATTEMPTS:
-                st.session_state.lockout_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
-                st.error(f"🔒 Too many failed attempts. Locked out for {LOCKOUT_DURATION_MINUTES} minutes.")
-            else:
-                st.error("❌ Incorrect password.")
-
-    return False
+    allowed = [e.strip() for e in st.secrets.get("allowed_emails", "").split(",") if e.strip()]
+    if allowed and st.user.email not in allowed:
+        st.error(f"❌ Access denied: {st.user.email} is not authorized.")
+        if st.button("Log out"):
+            st.logout()
+        st.stop()
 
 # ─── Google Sheets Client ─────────────────────────────────────────────────────
 # Imported from sheets_client.py (shared with app.py so the connection is cached once)
@@ -280,8 +206,7 @@ def create_invoice_now(row_number: int) -> tuple:
 
 # ─── Main Admin UI ────────────────────────────────────────────────────────────
 
-if not check_admin_password():
-    st.stop()
+require_auth()
 
 # Track which order is being edited
 if "editing_row" not in st.session_state:
@@ -293,12 +218,9 @@ with col_title:
     st.title("📋 Just Bake - Admin Dashboard")
 with col_logout:
     if st.button("Logout", use_container_width=True):
-        st.session_state.admin_authenticated = False
-        st.rerun()
+        st.logout()
 
-# Session info
-time_left = SESSION_TIMEOUT_MINUTES - int((datetime.now() - st.session_state.last_activity).seconds / 60)
-st.caption(f"Session active · Auto-logout in {time_left} min")
+st.caption(f"👤 Logged in as {st.user.email}")
 
 st.divider()
 
