@@ -59,7 +59,7 @@ def load_data() -> pd.DataFrame:
         payment = row[3].strip() if len(row) > 3 else ""
 
         # Product revenue per product
-        product_data = {"date": date, "customer": row[1].strip(), "amount": amount, "payment": payment}
+        product_data = {"date": pd.Timestamp(date), "customer": row[1].strip(), "amount": amount, "payment": payment}
         for pi, product in enumerate(PRODUCTS):
             prefix = product["column_prefix"]
             try:
@@ -100,8 +100,6 @@ with col_f1:
     period = st.selectbox("Group by", ["Month", "Week", "Day"], index=0)
 with col_f2:
     months_back = st.selectbox("Show last", [3, 6, 12, 24, 9999], format_func=lambda x: "All time" if x == 9999 else f"{x} months", index=1)
-
-df["date"] = pd.to_datetime(df["date"])
 
 if months_back != 9999:
     cutoff = pd.Timestamp.now() - pd.DateOffset(months=months_back)
