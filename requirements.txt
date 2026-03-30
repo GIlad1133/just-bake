@@ -10,6 +10,10 @@ requests>=2.31.0
 # Environment variables for local development
 python-dotenv>=1.0.0
 
+# Community monitoring
+apify-client>=1.7.0
+anthropic>=0.40.0
+
 # Testing (development only)
 pytest>=7.4.0
 pytest-mock>=3.12.0

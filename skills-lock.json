@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "israeli-linkedin-strategy": {
+      "source": "skills-il/marketing-growth",
+      "sourceType": "github",
+      "computedHash": "36d636cd30d20b152ced8fe41266f39644e8d77026e714bfe7c129df00c50102"
+    },
+    "israeli-social-content": {
+      "source": "skills-il/marketing-growth",
+      "sourceType": "github",
+      "computedHash": "6c921a7ae673a9d519d1a7a5ab4ae3dfe5204c3b454e620ddaf7dcd738b07afb"
+    }
+  }
+}
