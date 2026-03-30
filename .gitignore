@@ -32,6 +32,12 @@ find_*.py
 recreate_*.py
 final_*.py
 
+# Secret files
+streamlit_secrets*.txt
+netlify.txt
+*_secret*.txt
+*_credentials*.txt
+
 # Claude files
 CLAUDE.md
 .claude/
