@@ -32,6 +32,11 @@ find_*.py
 recreate_*.py
 final_*.py
 
+# Claude files
+CLAUDE.md
+.claude/
+.agents/
+
 # OS
 .DS_Store
 Thumbs.db
