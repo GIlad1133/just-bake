@@ -7,7 +7,10 @@ Run via GitHub Actions daily, or manually: python src/community_monitor.py
 import os
 import json
 import logging
+import base64
 from datetime import datetime
+
+import requests
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -129,7 +132,12 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
         content = [{"type": "text", "text": prompt}]
         image_url = post.get("image_url")
         if image_url:
-            content.insert(0, {"type": "image", "source": {"type": "url", "url": image_url}})
+            try:
+                img_data = requests.get(image_url, timeout=10).content
+                img_b64 = base64.standard_b64encode(img_data).decode("utf-8")
+                content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}})
+            except Exception as img_err:
+                log.warning(f"Could not load image: {img_err}")
         resp = claude.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=800,
