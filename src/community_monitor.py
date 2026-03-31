@@ -118,7 +118,14 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
             max_tokens=800,
             messages=[{"role": "user", "content": prompt}]
         )
-        return json.loads(resp.content[0].text)
+        text = resp.content[0].text.strip()
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            text = text.split("```", 2)[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        return json.loads(text)
     except Exception as e:
         log.warning(f"Claude error: {e}")
         return {"score": 0, "answer": None, "tags": [], "question_type": "other", "score_reason": str(e)}
