@@ -21,7 +21,7 @@ COMMUNITY_SHEET_NAME = "Community"
 COMMUNITY_HEADERS = [
     "date_fetched", "group_url", "post_url", "post_author",
     "post_date", "post_text", "comments", "answer",
-    "score", "score_reason", "tags", "question_type", "status", "posted_date",
+    "score", "score_reason", "tags", "question_type", "status", "posted_date", "image_url",
 ]
 
 
@@ -72,7 +72,14 @@ def fetch_posts(group_urls: list, apify_token: str, posts_per_group: int = 25) -
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
     valid = [item for item in items if item.get("text") and item.get("url")]
-    log.info(f"Got {len(valid)} posts with text")
+    # Extract first image URL from attachments
+    for item in valid:
+        attachments = item.get("attachments") or []
+        item["image_url"] = next(
+            (a.get("thumbnail") or a.get("photo_image", {}).get("uri") for a in attachments if a.get("thumbnail") or a.get("photo_image")),
+            None
+        )
+    log.info(f"Got {len(valid)} posts with text ({sum(1 for p in valid if p.get('image_url'))} with images)")
     return valid
 
 
@@ -84,7 +91,9 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
         for c in (post.get("topComments") or [])
     ]) or "אין תגובות עדיין"
 
+    has_image = bool(post.get("image_url"))
     prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" - עסק שמוכר בצק פיצה נפוליטני, ערכות אפייה, רוטב ומוצרי גבינה בפתח תקווה.
+{"קיבלת גם תמונה/וידאו מהפוסט - השתמש בה כדי להבין את ההקשר." if has_image else ""}
 
 פוסט מקבוצת פייסבוק:
 מחבר: {post.get('user', {}).get('name', '')}
@@ -113,10 +122,14 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 הדגש: גלעד מוכר בצק, ערכות, רוטב, קמח. ענה רק כשיש קשר לתחומים אלה."""
 
     try:
+        content = [{"type": "text", "text": prompt}]
+        image_url = post.get("image_url")
+        if image_url:
+            content.insert(0, {"type": "image", "source": {"type": "url", "url": image_url}})
         resp = claude.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=800,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": content}]
         )
         text = resp.content[0].text.strip()
         # Strip markdown code fences if present
@@ -193,6 +206,7 @@ def run_monitor():
                 result.get("question_type", ""),               # question_type
                 "pending",                                     # status
                 "",                                            # posted_date
+                post.get("image_url") or "",                   # image_url
             ])
             known_posts[url] = {"row": None, "comment_count": len(comments_flat)}
             saved += 1
