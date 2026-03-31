@@ -21,7 +21,7 @@ COMMUNITY_SHEET_NAME = "Community"
 COMMUNITY_HEADERS = [
     "date_fetched", "group_url", "post_url", "post_author",
     "post_date", "post_text", "comments", "answer",
-    "score", "tags", "question_type", "status", "posted_date",
+    "score", "score_reason", "tags", "question_type", "status", "posted_date",
 ]
 
 
@@ -37,9 +37,21 @@ def get_or_create_community_sheet(spreadsheet):
         return ws
 
 
-def get_known_urls(ws) -> set:
-    urls = ws.col_values(3)  # post_url = column C
-    return set(urls[1:])     # skip header
+def get_known_posts(ws) -> dict:
+    """Returns {url: {"row": row_number, "comment_count": N}} for dedup + update detection."""
+    records = ws.get_all_values()
+    if len(records) <= 1:
+        return {}
+    headers = records[0]
+    url_col = headers.index("post_url")       # C = 2
+    comments_col = headers.index("comments")  # G = 6
+    result = {}
+    for i, row in enumerate(records[1:], start=2):  # row 2 = first data row in Sheets
+        url = row[url_col] if len(row) > url_col else ""
+        comments = row[comments_col] if len(row) > comments_col else ""
+        if url:
+            result[url] = {"row": i, "comment_count": len(comments)}
+    return result
 
 
 # ─── Apify ────────────────────────────────────────────────────────────────────
@@ -136,47 +148,65 @@ def run_monitor():
     )
     spreadsheet = gspread.authorize(creds).open_by_key(spreadsheet_id)
     ws = get_or_create_community_sheet(spreadsheet)
-    known_urls = get_known_urls(ws)
-    log.info(f"Known URLs: {len(known_urls)}")
+    known_posts = get_known_posts(ws)
+    log.info(f"Known posts: {len(known_posts)}")
 
     # Fetch posts
     posts = fetch_posts(monitoring_groups, apify_token)
-    new_posts = [p for p in posts if p.get("url") not in known_urls]
-    log.info(f"New posts to process: {len(new_posts)}")
-
-    # Score and save
     claude = anthropic.Anthropic(api_key=anthropic_key)
-    saved = 0
+    saved = updated = 0
 
-    for post in new_posts:
+    for post in posts:
         url = post.get("url")
-        log.info(f"Scoring: {url[:70]}...")
-        result = score_and_answer(post, claude)
+        if not url:
+            continue
 
         comments_flat = " | ".join([
             f"{c.get('profileName','')}: {c.get('text','')}"
             for c in (post.get("topComments") or [])
         ])
 
-        ws.append_row([
-            datetime.now().strftime("%d/%m/%Y"),          # date_fetched
-            post.get("facebookUrl", ""),                   # group_url
-            url,                                           # post_url
-            post.get("user", {}).get("name", ""),          # post_author
-            str(post.get("time", ""))[:10],                # post_date
-            (post.get("text") or "")[:1000],               # post_text
-            comments_flat[:800],                           # comments
-            result.get("answer") or "",                    # answer
-            result.get("score", 0),                        # score
-            ", ".join(result.get("tags", [])),             # tags
-            result.get("question_type", ""),               # question_type
-            "pending",                                     # status
-            "",                                            # posted_date
-        ])
-        known_urls.add(url)
-        saved += 1
+        if url not in known_posts:
+            # New post — score and append
+            log.info(f"New post: {url[:70]}...")
+            result = score_and_answer(post, claude)
 
-    log.info(f"Done. Saved {saved} new posts.")
+            ws.append_row([
+                datetime.now().strftime("%d/%m/%Y"),          # date_fetched
+                post.get("facebookUrl", ""),                   # group_url
+                url,                                           # post_url
+                post.get("user", {}).get("name", ""),          # post_author
+                str(post.get("time", ""))[:10],                # post_date
+                (post.get("text") or "")[:1000],               # post_text
+                comments_flat[:800],                           # comments
+                result.get("answer") or "",                    # answer
+                result.get("score", 0),                        # score
+                result.get("score_reason", ""),                # score_reason
+                ", ".join(result.get("tags", [])),             # tags
+                result.get("question_type", ""),               # question_type
+                "pending",                                     # status
+                "",                                            # posted_date
+            ])
+            known_posts[url] = {"row": None, "comment_count": len(comments_flat)}
+            saved += 1
+
+        else:
+            # Known post — check if comments grew (new engagement)
+            stored = known_posts[url]
+            if len(comments_flat) > stored["comment_count"] and stored["row"]:
+                log.info(f"Updated comments on: {url[:70]}...")
+                result = score_and_answer(post, claude)
+                row = stored["row"]
+                # Update comments (col 7), answer (8), score (9), score_reason (10)
+                ws.update(f"G{row}:J{row}", [[
+                    comments_flat[:800],
+                    result.get("answer") or "",
+                    result.get("score", 0),
+                    result.get("score_reason", ""),
+                ]])
+                updated += 1
+
+    log.info(f"Done. Saved {saved} new posts, updated {updated} existing posts.")
     return saved
 
 

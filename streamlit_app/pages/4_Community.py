@@ -51,9 +51,9 @@ def update_status(post_url: str, new_status: str):
     for i, url in enumerate(urls):
         if url == post_url:
             row_num = i + 1
-            ws.update_cell(row_num, 12, new_status)           # status = col L
+            ws.update_cell(row_num, 13, new_status)           # status = col M
             if new_status == "posted":
-                ws.update_cell(row_num, 13, date.today().strftime("%d/%m/%Y"))  # posted_date
+                ws.update_cell(row_num, 14, date.today().strftime("%d/%m/%Y"))  # posted_date
             st.cache_data.clear()
             return
 
