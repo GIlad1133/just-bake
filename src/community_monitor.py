@@ -22,6 +22,7 @@ COMMUNITY_HEADERS = [
     "date_fetched", "group_url", "post_url", "post_author",
     "post_date", "post_text", "comments", "answer",
     "score", "score_reason", "tags", "question_type", "status", "posted_date", "image_url",
+    "image_description", "post_type",
 ]
 
 
@@ -93,7 +94,6 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 
     has_image = bool(post.get("image_url"))
     prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" - עסק שמוכר בצק פיצה נפוליטני, ערכות אפייה, רוטב ומוצרי גבינה בפתח תקווה.
-{"קיבלת גם תמונה/וידאו מהפוסט - השתמש בה כדי להבין את ההקשר." if has_image else ""}
 
 פוסט מקבוצת פייסבוק:
 מחבר: {post.get('user', {}).get('name', '')}
@@ -104,10 +104,14 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 תגובות קיימות:
 {comments_text}
 
+{"יש תמונה/וידאו מצורפת לפוסט - נתח אותה: מה מוצג בה? האם היא חלק מהשאלה, הדגמה, פרסומת, או שיתוף תוצאה?" if has_image else "אין תמונה בפוסט."}
+
 ענה בJSON בלבד (ללא markdown):
 {{
+  "image_description": "<תיאור קצר של מה שרואים בתמונה, או null אם אין תמונה>",
+  "post_type": "<question|showcase|ad|sale|welcome|other>",
   "score": <1-10>,
-  "score_reason": "<משפט קצר למה הציון הזה>",
+  "score_reason": "<משפט קצר למה הציון הזה, כולל מה הבנת מהתמונה אם יש>",
   "answer": "<תגובה בעברית מדוברת שגלעד יכול לפרסם - מקצועית, מועילה, לא שיווקית מדי. null אם לא רלוונטי>",
   "tags": ["<נושא>", "<נושא>"],
   "question_type": "<where_to_buy|recipe_help|technique|equipment|ingredient|general_pizza|not_relevant>"
@@ -117,7 +121,7 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 9-10: שאלה ישירה על בצק/אפייה/פיצה נפוליטנית שגלעד יכול לענות מניסיון, עדיין אין תשובה טובה
 7-8: רלוונטי לתחום, גלעד יכול להוסיף ערך מקצועי
 5-6: קשור לפיצה/טאבון אבל פחות ממוקד
-1-4: לא קשור, פרסומת, או כבר יש תשובות מלאות
+1-4: לא קשור, פרסומת, מכירה, ברכות, או כבר יש תשובות מלאות
 
 הדגש: גלעד מוכר בצק, ערכות, רוטב, קמח. ענה רק כשיש קשר לתחומים אלה."""
 
@@ -207,6 +211,8 @@ def run_monitor():
                 "pending",                                     # status
                 "",                                            # posted_date
                 post.get("image_url") or "",                   # image_url
+                result.get("image_description") or "",         # image_description
+                result.get("post_type") or "",                 # post_type
             ])
             known_posts[url] = {"row": None, "comment_count": len(comments_flat)}
             saved += 1
