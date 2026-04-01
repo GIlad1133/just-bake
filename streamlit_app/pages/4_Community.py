@@ -86,6 +86,7 @@ with tab1:
     pending = [
         p for p in all_posts
         if p.get("status") == "pending"
+        and p.get("status") != "noise"
         and int(p.get("score") or 0) >= min_score
         and p.get("answer")
     ]

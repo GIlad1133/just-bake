@@ -93,6 +93,33 @@ def fetch_posts(group_urls: list, apify_token: str, posts_per_group: int = 25) -
     return valid
 
 
+# ─── Pre-filter (no Claude call needed) ───────────────────────────────────────
+
+# Patterns that are always noise — grows over time as we learn the groups
+NOISE_PATTERNS = [
+    # Welcome posts
+    "ברוכים הבאים לקבוצה",
+    "welcome our new members",
+    "today marks",
+    "let's welcome",
+    # Sales
+    "למכירה",
+    "למסירה",
+    "נמסר",
+    # Ads / promo for other groups
+    "הצטרפו לקבוצתנו",
+    "הצטרפו לקבוצה",
+]
+
+def is_noise(post: dict) -> tuple[bool, str]:
+    """Returns (True, reason) if post is obvious noise that doesn't need Claude scoring."""
+    text = (post.get("text") or "").lower()
+    for pattern in NOISE_PATTERNS:
+        if pattern.lower() in text:
+            return True, pattern
+    return False, ""
+
+
 # ─── Claude ───────────────────────────────────────────────────────────────────
 
 def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
@@ -210,6 +237,23 @@ def run_monitor():
         ])
 
         if url not in known_posts:
+            noise, reason = is_noise(post)
+            if noise:
+                log.info(f"Skipping noise ({reason}): {url[:60]}")
+                ws.append_row([
+                    datetime.now().strftime("%d/%m/%Y"),
+                    post.get("facebookUrl", ""),
+                    url,
+                    post.get("user", {}).get("name", ""),
+                    str(post.get("time", ""))[:10],
+                    (post.get("text") or "")[:1000],
+                    "", "", -1, reason, "", "noise", "", "", "",  # score=-1, status=noise
+                    "", "",
+                ])
+                known_posts[url] = {"row": None, "comment_count": 0}
+                saved += 1
+                continue
+
             # New post — score and append
             log.info(f"New post: {url[:70]}...")
             result = score_and_answer(post, claude)
