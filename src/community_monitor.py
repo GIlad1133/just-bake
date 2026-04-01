@@ -33,10 +33,16 @@ COMMUNITY_HEADERS = [
 
 def get_or_create_community_sheet(spreadsheet):
     try:
-        return spreadsheet.worksheet(COMMUNITY_SHEET_NAME)
+        ws = spreadsheet.worksheet(COMMUNITY_SHEET_NAME)
+        # Update headers if they're out of date
+        current = ws.row_values(1)
+        if current != COMMUNITY_HEADERS:
+            ws.update("A1", [COMMUNITY_HEADERS])
+            log.info("Updated Community sheet headers")
+        return ws
     except gspread.WorksheetNotFound:
         ws = spreadsheet.add_worksheet(COMMUNITY_SHEET_NAME, rows=2000, cols=len(COMMUNITY_HEADERS))
-        ws.append_row(COMMUNITY_HEADERS)
+        ws.update("A1", [COMMUNITY_HEADERS])
         log.info("Created Community sheet")
         return ws
 
@@ -133,9 +139,14 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
         image_url = post.get("image_url")
         if image_url:
             try:
-                img_data = requests.get(image_url, timeout=10).content
-                img_b64 = base64.standard_b64encode(img_data).decode("utf-8")
-                content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}})
+                resp = requests.get(image_url, timeout=10)
+                content_type = resp.headers.get("content-type", "")
+                if resp.status_code == 200 and content_type.startswith("image/"):
+                    media_type = content_type.split(";")[0].strip()
+                    img_b64 = base64.standard_b64encode(resp.content).decode("utf-8")
+                    content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": img_b64}})
+                else:
+                    log.warning(f"Image not usable: status={resp.status_code} content-type={content_type}")
             except Exception as img_err:
                 log.warning(f"Could not load image: {img_err}")
         resp = claude.messages.create(
