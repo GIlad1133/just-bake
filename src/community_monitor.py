@@ -176,12 +176,14 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
                     log.warning(f"Image not usable: status={resp.status_code} content-type={content_type}")
             except Exception as img_err:
                 log.warning(f"Could not load image: {img_err}")
+        log.info(f"Calling Claude for post {post.get('url','?')[:60]} (content_blocks={len(content)})")
         resp = claude.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=800,
+            max_tokens=1200,
             messages=[{"role": "user", "content": content}]
         )
         text = resp.content[0].text.strip()
+        log.info(f"Claude raw response (first 200 chars): {text[:200]}")
         # Strip markdown code fences if present
         if text.startswith("```"):
             text = text.split("```", 2)[1]
@@ -190,7 +192,7 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
             text = text.strip()
         return json.loads(text)
     except Exception as e:
-        log.warning(f"Claude error: {e}")
+        log.exception(f"Claude error for post {post.get('url','?')[:60]}: {e}")
         return {"score": 0, "answer": None, "tags": [], "question_type": "other", "score_reason": str(e)}
 
 
