@@ -186,7 +186,13 @@ with tab3:
     st.subheader("💡 Content Ideas")
     st.caption("שאלות שחוזרות על עצמן = תוכן שאנשים רוצים")
 
-    answered = [p for p in all_posts if p.get("question_type") and p.get("question_type") != "not_relevant"]
+    answered = [
+        p for p in all_posts
+        if p.get("question_type")
+        and p.get("question_type") not in ("not_relevant", "noise", "other", "ad", "sale", "welcome")
+        and p.get("post_type") not in ("sale", "ad", "welcome")
+        and int(p.get("score") or 0) >= 4
+    ]
 
     # Group by question_type
     from collections import Counter, defaultdict
