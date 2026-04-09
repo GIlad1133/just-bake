@@ -140,17 +140,16 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
 
 st.title("🍕 Just Bake - New Order")
 
-# Make the date picker start on Sunday — inject CSS into the parent Streamlit frame
+# Make the date picker start on Sunday — inject stable CSS into the parent frame
+# Uses data-baseweb and role attributes (stable across Streamlit versions)
 components.html("""
 <script>
 (function() {
     const css = `
-        .react-datepicker__day-names,
-        .react-datepicker__week {
+        [data-baseweb="calendar"] [role="row"] {
             display: flex !important;
         }
-        .react-datepicker__day-names .react-datepicker__day-name:nth-child(7),
-        .react-datepicker__week > div:nth-child(7) {
+        [data-baseweb="calendar"] [role="row"] > *:last-child {
             order: -1 !important;
         }
     `;
