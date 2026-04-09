@@ -4,6 +4,7 @@ Streamlit web app for entering new pizza orders.
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime
 import uuid
 import os
@@ -138,6 +139,26 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
 # ─── Main UI ──────────────────────────────────────────────────────────────────
 
 st.title("🍕 Just Bake - New Order")
+
+# Make the date picker start on Sunday (Israel locale)
+components.html("""
+<script>
+(function() {
+    function reorderCalendar() {
+        const doc = window.parent.document;
+        doc.querySelectorAll('.react-datepicker__day-names, .react-datepicker__week').forEach(row => {
+            if (row.children.length === 7) {
+                row.insertBefore(row.children[6], row.children[0]);
+            }
+        });
+    }
+    new MutationObserver(reorderCalendar).observe(window.parent.document.body, {
+        childList: true, subtree: true
+    });
+})();
+</script>
+""", height=0)
+
 st.divider()
 
 # ─── Customer ─────────────────────────────────────────────────────────────────
