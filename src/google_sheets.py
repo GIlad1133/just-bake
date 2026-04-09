@@ -75,7 +75,6 @@ class GoogleSheetsClient:
         # Create credentials
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
         ]
         credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
 

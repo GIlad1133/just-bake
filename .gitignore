@@ -33,6 +33,8 @@ recreate_*.py
 final_*.py
 
 # Secret files
+invoice-keep-*.json
+*service_account*.json
 streamlit_secrets*.txt
 netlify.txt
 *_secret*.txt
