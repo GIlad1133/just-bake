@@ -14,27 +14,31 @@ import os
 def get_sheets_client():
     """Initialize and cache Google Sheets client. Shared across all pages."""
     credentials_dict = None
+    load_errors = []
 
     try:
         creds_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
         if creds_json:
             credentials_dict = json.loads(creds_json)
-    except Exception:
-        pass
+    except Exception as e:
+        load_errors.append(f"GOOGLE_CREDENTIALS_JSON: {e}")
 
     if not credentials_dict:
         try:
             credentials_dict = dict(st.secrets["google_sheets_credentials"])
-        except Exception:
-            pass
+        except Exception as e:
+            load_errors.append(f"google_sheets_credentials: {e}")
 
     if not credentials_dict:
         credentials_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
         if credentials_json:
-            credentials_dict = json.loads(credentials_json)
+            try:
+                credentials_dict = json.loads(credentials_json)
+            except Exception as e:
+                load_errors.append(f".env: {e}")
 
     if not credentials_dict:
-        raise ValueError("No Google Sheets credentials found.")
+        raise ValueError(f"No Google Sheets credentials found. Tried: {'; '.join(load_errors)}")
 
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
