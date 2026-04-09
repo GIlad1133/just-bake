@@ -231,7 +231,11 @@ with tab3:
             # Generate post button
             btn_key = f"gen_{q_type}"
             if st.button("✍️ צור פוסט על הנושא הזה", key=btn_key, use_container_width=True):
-                anthropic_key = st.secrets.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY")
+                anthropic_key = (
+                    st.secrets.get("anthropic_api_key")
+                    or st.secrets.get("ANTHROPIC_API_KEY")
+                    or os.getenv("ANTHROPIC_API_KEY")
+                )
                 if not anthropic_key:
                     st.error("חסר anthropic_api_key ב-secrets")
                 else:
