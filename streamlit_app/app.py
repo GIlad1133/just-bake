@@ -140,25 +140,27 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
 
 st.title("🍕 Just Bake - New Order")
 
-# Make the date picker start on Sunday — inject stable CSS into the parent frame
-# Uses data-baseweb and role attributes (stable across Streamlit versions)
+# Make the date picker start on Sunday
+# Finds calendar rows by structure (7 children) — no class names needed
 components.html("""
 <script>
 (function() {
-    const css = `
-        [data-baseweb="calendar"] [role="row"] {
-            display: flex !important;
-        }
-        [data-baseweb="calendar"] [role="row"] > *:last-child {
-            order: -1 !important;
-        }
-    `;
-    const style = window.parent.document.createElement('style');
-    style.textContent = css;
-    window.parent.document.head.appendChild(style);
+    const doc = window.parent.document;
+
+    function fixRows(root) {
+        root.querySelectorAll('*').forEach(el => {
+            if (el.children.length === 7 && el.getAttribute('aria-hidden') !== 'true') {
+                el.style.display = 'flex';
+                el.children[6].style.order = '-1';
+            }
+        });
+    }
+
+    new MutationObserver(() => fixRows(doc.body))
+        .observe(doc.body, { childList: true, subtree: true });
 })();
 </script>
-""", height=0, scrolling=False)
+""", height=1)
 
 st.divider()
 
