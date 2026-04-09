@@ -145,12 +145,22 @@ st.divider()
 existing_customers = get_existing_customers()
 customer_options = ["🆕 New Customer"] + sorted(existing_customers.keys())
 
+def on_customer_change():
+    """When customer selection changes, push their phone into session state."""
+    selected = st.session_state.get(f"v{v}_customer", "")
+    phone_key = f"v{v}_phone"
+    if selected and selected != "🆕 New Customer" and selected in existing_customers:
+        st.session_state[phone_key] = existing_customers[selected]["phone"]
+    else:
+        st.session_state[phone_key] = ""
+
 col1, col2 = st.columns(2)
 with col1:
     selected_customer = st.selectbox(
         "Customer *",
         options=customer_options,
-        key=f"v{v}_customer"
+        key=f"v{v}_customer",
+        on_change=on_customer_change
     )
     if selected_customer == "🆕 New Customer":
         customer_name = st.text_input(
@@ -162,12 +172,8 @@ with col1:
         customer_name = selected_customer
 
 with col2:
-    default_phone = ""
-    if selected_customer != "🆕 New Customer" and selected_customer in existing_customers:
-        default_phone = existing_customers[selected_customer]["phone"]
     phone = st.text_input(
         "Phone",
-        value=default_phone,
         placeholder="050-1234567",
         key=f"v{v}_phone"
     )
