@@ -205,12 +205,23 @@ with tab3:
         "other": "💬 אחר",
     }
 
+    if "dismissed_topics" not in st.session_state:
+        st.session_state.dismissed_topics = set()
+
     for q_type, count in type_counts.most_common():
         if q_type in ("noise", "not_relevant", "other", "ad", "sale", "welcome"):
             continue
+        if q_type in st.session_state.dismissed_topics:
+            continue
         label = type_labels.get(q_type, q_type)
         with st.container(border=True):
-            st.markdown(f"### {label} — {count} שאלות")
+            col_title, col_dismiss = st.columns([6, 1])
+            with col_title:
+                st.markdown(f"### {label} — {count} שאלות")
+            with col_dismiss:
+                if st.button("✕", key=f"dismiss_{q_type}", help="הסתר נושא זה"):
+                    st.session_state.dismissed_topics.add(q_type)
+                    st.rerun()
 
             # Show sample questions
             samples = type_posts[q_type][:5]
