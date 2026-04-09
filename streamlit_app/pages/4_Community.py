@@ -229,59 +229,68 @@ with tab3:
                     st.session_state.dismissed_topics.add(q_type)
                     st.rerun()
 
-            # Show sample questions
-            samples = type_posts[q_type][:5]
-            for p in samples:
-                st.caption(f"• {p.get('post_text','')[:120]}...")
-
-            # Generate post button
-            btn_key = f"gen_{q_type}"
-            if st.button("✍️ צור פוסט על הנושא הזה", key=btn_key, use_container_width=True):
+            def get_anthropic_key():
                 try:
-                    anthropic_key = st.secrets["ANTHROPIC_API_KEY"]
+                    return st.secrets["ANTHROPIC_API_KEY"]
                 except Exception:
-                    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-                if not anthropic_key:
+                    return os.getenv("ANTHROPIC_API_KEY")
+
+            def generate_post(prompt_text, result_key):
+                key = get_anthropic_key()
+                if not key:
                     st.error("חסר anthropic_api_key ב-secrets")
-                else:
-                    questions_text = "\n".join(
-                        f"- {p.get('post_text','')[:200]}" for p in type_posts[q_type][:8]
+                    return
+                with st.spinner("כותב פוסט..."):
+                    client = anthropic.Anthropic(api_key=key)
+                    resp = client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=1000,
+                        messages=[{"role": "user", "content": prompt_text}]
                     )
-                    prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" לכתוב פוסט לפייסבוק.
+                    st.session_state[result_key] = resp.content[0].text.strip()
 
-גלעד מוכר בצק פיצה נפוליטני, ערכות אפייה (5 כדורי בצק + גבינת מוצרלה + רוטב + קמח לפתיחה), בצק כוסמין ובצק ללא גלוטן. איסוף מרחוב נס ציונה 10, פתח תקווה. טלפון: 0525800797.
+            BASE_CONTEXT = """גלעד מוכר בצק פיצה נפוליטני, ערכות אפייה (5 כדורי בצק + גבינת מוצרלה + רוטב + קמח לפתיחה), בצק כוסמין ובצק ללא גלוטן. איסוף מרחוב נס ציונה 10, פתח תקווה. טלפון: 0525800797.
+מחירים: מארז 130 ₪ | 2 מארזים 240 ₪ | 10 כדורי בצק 100 ₪
+כלול תמיד: יש גם בצק ללא גלוטן ומקמח כוסמין | הבצק מתאים לאפייה בתנור ביתי ובטאבון | איסוף מרחוב נס ציונה 10, פתח תקווה (אם המושבות הותיקה) | 📲 0525800797 גלעד"""
 
-מחירים:
-מארז 130 ₪
-2 מארזים 240 ₪
-10 כדורי בצק 100 ₪
+            # Show each post individually with its own generate button
+            samples = type_posts[q_type][:8]
+            for i, p in enumerate(samples):
+                post_key = f"gen_{q_type}_{i}"
+                result_key = f"result_{q_type}_{i}"
+                with st.container(border=False):
+                    col_text, col_btn = st.columns([5, 1])
+                    with col_text:
+                        st.caption(f"• {p.get('post_text','')[:150]}...")
+                    with col_btn:
+                        if st.button("✍️", key=post_key, help="צור פוסט על הפוסט הזה"):
+                            single_prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" לכתוב פוסט לפייסבוק.
+{BASE_CONTEXT}
 
-בקבוצות פייסבוק, {count} אנשים שאלו שאלות בנושא "{label}":
+השראה — פוסט מהקהילה:
+{p.get('post_text','')[:400]}
+
+כתוב פוסט פייסבוק בעברית מדוברת שמספק ערך אמיתי בנושא הזה. לא שיווקי מדי. כותרת מושכת, תוכן מועיל (2-3 פסקאות), ובסוף ציין שגלעד יכול לעזור.
+פוסט בלבד, ללא הסברים."""
+                            generate_post(single_prompt, result_key)
+                    if result_key in st.session_state:
+                        st.text_area("ערוך:", value=st.session_state[result_key], height=300, key=f"txt_{result_key}")
+
+            st.divider()
+            # Category-level button — generates one post inspired by all posts in category
+            cat_result_key = f"result_{q_type}_all"
+            if st.button("✍️ צור פוסט על כל הנושא", key=f"gen_{q_type}_all", use_container_width=True):
+                questions_text = "\n".join(f"- {p.get('post_text','')[:200]}" for p in type_posts[q_type][:8])
+                cat_prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" לכתוב פוסט לפייסבוק.
+{BASE_CONTEXT}
+
+בקבוצות פייסבוק, {count} אנשים עסקו בנושא "{label}":
 {questions_text}
 
-כתוב פוסט פייסבוק שמספק ערך אמיתי לאנשים שאלו שאלות כאלה — תשובה מקצועית, כתובה בעברית מדוברת ואנושית. לא שיווקי מדי. בסוף ציין שגלעד יכול לעזור עם מוצריו.
-
-כלול:
-- כותרת/hook מושכת
-- תוכן מועיל (2-3 פסקאות)
-- שורה על המוצרים
-- "יש גם בצק ללא גלוטן ומקמח כוסמין"
-- "הבצק מתאים לאפייה בתנור ביתי ובטאבון"
-- "איסוף מרחוב נס ציונה 10, פתח תקווה (אם המושבות הותיקה)"
-- 📲 0525800797 גלעד
-
+כתוב פוסט פייסבוק שמספק ערך אמיתי — תשובה מקצועית, כתובה בעברית מדוברת ואנושית. כותרת/hook מושכת, תוכן מועיל (2-3 פסקאות), ובסוף ציין שגלעד יכול לעזור.
 פוסט בלבד, ללא הסברים."""
-
-                    with st.spinner("כותב פוסט..."):
-                        client = anthropic.Anthropic(api_key=anthropic_key)
-                        resp = client.messages.create(
-                            model="claude-haiku-4-5-20251001",
-                            max_tokens=1000,
-                            messages=[{"role": "user", "content": prompt}]
-                        )
-                        generated = resp.content[0].text.strip()
-
-                    st.markdown("**פוסט מוצע:**")
-                    st.text_area("ערוך לפי הצורך:", value=generated, height=350, key=f"post_{q_type}")
+                generate_post(cat_prompt, cat_result_key)
+            if cat_result_key in st.session_state:
+                st.text_area("ערוך:", value=st.session_state[cat_result_key], height=300, key=f"txt_{cat_result_key}")
 
 st.caption("Just Bake • Pashut La'afot 🍕")
