@@ -6,6 +6,7 @@ Daily Facebook group opportunities, knowledge base, and content ideas.
 import streamlit as st
 import os
 import sys
+import anthropic
 from datetime import datetime, date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -205,24 +206,62 @@ with tab3:
     }
 
     for q_type, count in type_counts.most_common():
+        if q_type in ("noise", "not_relevant", "other", "ad", "sale", "welcome"):
+            continue
         label = type_labels.get(q_type, q_type)
         with st.container(border=True):
             st.markdown(f"### {label} — {count} שאלות")
 
-            # Content suggestions based on type
-            suggestions = {
-                "recipe_help": "📹 וידאו: מתכון שלב אחרי שלב | ✍️ בלוג: מדריך מקיף",
-                "technique": "📹 וידאו: טיפים מקצועיים | 📸 פוסט: before/after",
-                "where_to_buy": "📣 פוסט פייסבוק: היכן לקנות את המוצרים שלנו",
-                "equipment": "📹 וידאו: איך לבחור טאבון | ✍️ בלוג: המדריך לציוד",
-                "ingredient": "📣 פוסט: על המרכיבים שלנו | 📹 וידאו: השוואת מוצרים",
-                "general_pizza": "📹 וידאו כללי | 📣 פוסט אינפורמטיבי",
-            }
-            st.caption(f"💡 רעיונות: {suggestions.get(q_type, 'תוכן על הנושא')}")
-
             # Show sample questions
-            samples = type_posts[q_type][:3]
+            samples = type_posts[q_type][:5]
             for p in samples:
-                st.caption(f"• {p.get('post_text','')[:100]}...")
+                st.caption(f"• {p.get('post_text','')[:120]}...")
+
+            # Generate post button
+            btn_key = f"gen_{q_type}"
+            if st.button("✍️ צור פוסט על הנושא הזה", key=btn_key, use_container_width=True):
+                anthropic_key = st.secrets.get("anthropic_api_key") or os.getenv("ANTHROPIC_API_KEY")
+                if not anthropic_key:
+                    st.error("חסר anthropic_api_key ב-secrets")
+                else:
+                    questions_text = "\n".join(
+                        f"- {p.get('post_text','')[:200]}" for p in type_posts[q_type][:8]
+                    )
+                    prompt = f"""אתה עוזר לגלעד מ"פשוט לאפות" לכתוב פוסט לפייסבוק.
+
+גלעד מוכר בצק פיצה נפוליטני, ערכות אפייה (5 כדורי בצק + גבינת מוצרלה + רוטב + קמח לפתיחה), בצק כוסמין ובצק ללא גלוטן. איסוף מרחוב נס ציונה 10, פתח תקווה. טלפון: 0525800797.
+
+מחירים:
+מארז 130 ₪
+2 מארזים 240 ₪
+10 כדורי בצק 100 ₪
+
+בקבוצות פייסבוק, {count} אנשים שאלו שאלות בנושא "{label}":
+{questions_text}
+
+כתוב פוסט פייסבוק שמספק ערך אמיתי לאנשים שאלו שאלות כאלה — תשובה מקצועית, כתובה בעברית מדוברת ואנושית. לא שיווקי מדי. בסוף ציין שגלעד יכול לעזור עם מוצריו.
+
+כלול:
+- כותרת/hook מושכת
+- תוכן מועיל (2-3 פסקאות)
+- שורה על המוצרים
+- "יש גם בצק ללא גלוטן ומקמח כוסמין"
+- "הבצק מתאים לאפייה בתנור ביתי ובטאבון"
+- "איסוף מרחוב נס ציונה 10, פתח תקווה (אם המושבות הותיקה)"
+- 📲 0525800797 גלעד
+
+פוסט בלבד, ללא הסברים."""
+
+                    with st.spinner("כותב פוסט..."):
+                        client = anthropic.Anthropic(api_key=anthropic_key)
+                        resp = client.messages.create(
+                            model="claude-haiku-4-5-20251001",
+                            max_tokens=1000,
+                            messages=[{"role": "user", "content": prompt}]
+                        )
+                        generated = resp.content[0].text.strip()
+
+                    st.markdown("**פוסט מוצע:**")
+                    st.text_area("ערוך לפי הצורך:", value=generated, height=350, key=f"post_{q_type}")
 
 st.caption("Just Bake • Pashut La'afot 🍕")
