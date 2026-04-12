@@ -4,6 +4,7 @@ Secure admin interface for managing orders, payments, and invoices.
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, date
 import os
 import sys
@@ -245,7 +246,30 @@ paid_no_invoice = [
     and o["create_invoice"].strip().lower() != "yes"
 ]
 
+def _parse_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%d/%m/%Y")
+    except Exception:
+        return datetime.min
+
+paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
+
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+# After creating an invoice we rerun — re-click tab2 so the user stays there
+if st.session_state.pop("return_to_invoice_tab", False):
+    components.html("""
+    <script>
+    (function() {
+        function clickTab() {
+            const tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
+            if (tabs.length > 1) { tabs[1].click(); return; }
+            setTimeout(clickTab, 50);
+        }
+        setTimeout(clickTab, 50);
+    })();
+    </script>
+    """, height=0)
 
 tab1, tab2 = st.tabs([
     f"⚠️ Not Paid ({len(not_paid)})",
@@ -300,6 +324,7 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                             success, msg = create_invoice_now(order["row"])
                         if success:
                             st.success(msg)
+                            st.session_state.return_to_invoice_tab = True
                             st.rerun()
                         else:
                             st.error(msg)
