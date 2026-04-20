@@ -63,6 +63,16 @@ def update_status(post_url: str, new_status: str):
 st.title("🌐 Community Monitor")
 st.divider()
 
+TYPE_LABELS = {
+    "recipe_help": "🍕 עזרה במתכון",
+    "technique": "🎓 טכניקת אפייה",
+    "where_to_buy": "🛒 איפה לקנות",
+    "equipment": "🔥 ציוד וטאבון",
+    "ingredient": "🧀 מרכיבים",
+    "general_pizza": "🍕 פיצה כללי",
+    "other": "💬 אחר",
+}
+
 with st.spinner("Loading..."):
     all_posts = load_community_data()
 
@@ -101,44 +111,63 @@ with tab1:
     for post in pending:
         score = int(post.get("score") or 0)
         score_color = "🔴" if score >= 9 else "🟠" if score >= 7 else "🟡"
+        url_key = post.get("post_url", "")
+        regen_key = f"regen_{url_key}"
 
         with st.container(border=True):
+            # ── Header row ──
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(f"{score_color} **Score {score}/10** · {post.get('post_author', '')} · {post.get('post_date', '')[:10]}")
+                st.markdown(f"{score_color} **{score}/10** · {post.get('post_author', '')} · {post.get('post_date', '')[:10]}")
                 st.caption(post.get("score_reason", ""))
             with col2:
-                st.markdown(f"[פתח בפייסבוק ↗]({post.get('post_url', '')})")
+                st.markdown(f"[פייסבוק ↗]({url_key})")
 
-            # Post text
-            with st.expander("📝 הפוסט המקורי"):
-                st.write(post.get("post_text", ""))
-                if post.get("comments"):
-                    st.divider()
-                    st.caption("תגובות קיימות:")
+            # ── Post text (always visible) ──
+            st.markdown("**הפוסט:**")
+            st.info(post.get("post_text", ""), icon=None)
+
+            # ── Comments (if any) ──
+            if post.get("comments"):
+                with st.expander("💬 תגובות קיימות"):
                     for line in post.get("comments", "").split(" | "):
                         if line.strip():
                             st.caption(f"• {line.strip()}")
 
-            # Answer
+            # ── Suggested answer ──
             st.markdown("**התגובה המוצעת:**")
+            answer_val = st.session_state.get(regen_key, post.get("answer", ""))
             edited_answer = st.text_area(
-                "ערוך לפי הצורך:",
-                value=post.get("answer", ""),
+                "answer",
+                value=answer_val,
                 height=150,
-                key=f"ans_{post.get('post_url','')}",
-                label_visibility="collapsed"
+                key=f"ans_{url_key}",
+                label_visibility="collapsed",
             )
 
-            col_posted, col_skip = st.columns(2)
+            # ── Action buttons ──
+            col_posted, col_regen, col_skip = st.columns(3)
             with col_posted:
-                if st.button("✅ פרסמתי", key=f"post_{post.get('post_url','')}", use_container_width=True):
-                    update_status(post.get("post_url", ""), "posted")
+                if st.button("✅ פרסמתי", key=f"post_{url_key}", use_container_width=True):
+                    update_status(url_key, "posted")
                     st.success("מסומן כפורסם!")
                     st.rerun()
+            with col_regen:
+                if st.button("🔄 חדש תשובה", key=f"regen_btn_{url_key}", use_container_width=True):
+                    anthropic_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+                    if not anthropic_key:
+                        st.error("חסר ANTHROPIC_API_KEY ב-secrets")
+                    else:
+                        from src.community_monitor import score_and_answer
+                        client = anthropic.Anthropic(api_key=anthropic_key)
+                        with st.spinner("מחדש תשובה..."):
+                            result = score_and_answer(post, client)
+                        if result.get("answer"):
+                            st.session_state[regen_key] = result["answer"]
+                            st.rerun()
             with col_skip:
-                if st.button("⏭️ דלג", key=f"skip_{post.get('post_url','')}", use_container_width=True):
-                    update_status(post.get("post_url", ""), "skipped")
+                if st.button("⏭️ דלג", key=f"skip_{url_key}", use_container_width=True):
+                    update_status(url_key, "skipped")
                     st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -169,9 +198,10 @@ with tab2:
     st.caption(f"{len(filtered)} תשובות")
 
     for post in filtered[:50]:
-        with st.expander(f"[{post.get('question_type','')}] {post.get('post_text','')[:80]}..."):
+        label = TYPE_LABELS.get(post.get("question_type", ""), post.get("question_type", ""))
+        with st.expander(f"{label} · {post.get('post_text','')[:90]}..."):
             st.markdown("**שאלה:**")
-            st.write(post.get("post_text", ""))
+            st.info(post.get("post_text", ""), icon=None)
             st.markdown("**תשובה:**")
             st.write(post.get("answer", ""))
             col_tags, col_link = st.columns([3, 1])
@@ -200,16 +230,7 @@ with tab3:
     type_posts = defaultdict(list)
     for p in answered:
         type_posts[p.get("question_type")].append(p)
-
-    type_labels = {
-        "recipe_help": "🍕 עזרה במתכון",
-        "technique": "🎓 טכניקת אפייה",
-        "where_to_buy": "🛒 איפה לקנות",
-        "equipment": "🔥 ציוד וטאבון",
-        "ingredient": "🧀 מרכיבים",
-        "general_pizza": "🍕 פיצה כללי",
-        "other": "💬 אחר",
-    }
+    type_labels = TYPE_LABELS
 
     if "dismissed_topics" not in st.session_state:
         st.session_state.dismissed_topics = set()
