@@ -441,49 +441,53 @@ with tab3:
                 for o in orders for p in prefixes
             )
 
-        total_kits = _sum_qty(pending_collection, "neapolitan_kit", "spelt_kit", "gluten_free_kit")
-        totals = {
-            "neapolitan_kit":  _sum_qty(pending_collection, "neapolitan_kit"),
-            "spelt_kit":       _sum_qty(pending_collection, "spelt_kit"),
-            "gluten_free_kit": _sum_qty(pending_collection, "gluten_free_kit"),
-            "neapolitan_dough":  _sum_qty(pending_collection, "neapolitan_dough"),
-            "spelt_dough":       _sum_qty(pending_collection, "spelt_dough"),
-            "gluten_free_dough": _sum_qty(pending_collection, "gluten_free_dough"),
-            "white_sauce": _sum_qty(pending_collection, "white_sauce"),
-            "red_sauce":   _sum_qty(pending_collection, "red_sauce"),
-            "cheese":      _sum_qty(pending_collection, "cheese"),
-        }
-        # Each kit includes 1 sauce and 1 cheese
-        total_sauce  = totals["white_sauce"] + totals["red_sauce"] + total_kits
-        total_cheese = totals["cheese"] + total_kits
+        kit_n  = _sum_qty(pending_collection, "neapolitan_kit")
+        kit_s  = _sum_qty(pending_collection, "spelt_kit")
+        kit_gf = _sum_qty(pending_collection, "gluten_free_kit")
+        total_kits = kit_n + kit_s + kit_gf
+
+        # Standalone quantities
+        dough_n  = _sum_qty(pending_collection, "neapolitan_dough")
+        dough_s  = _sum_qty(pending_collection, "spelt_dough")
+        dough_gf = _sum_qty(pending_collection, "gluten_free_dough")
+        sauce_white = _sum_qty(pending_collection, "white_sauce")
+        sauce_red   = _sum_qty(pending_collection, "red_sauce")
+        cheese_solo = _sum_qty(pending_collection, "cheese")
+
+        # Each kit = 5 doughs + 5 cheeses + 1 sauce
+        total_dough_n  = dough_n  + kit_n  * 5
+        total_dough_s  = dough_s  + kit_s  * 5
+        total_dough_gf = dough_gf + kit_gf * 5
+        total_sauce    = sauce_white + sauce_red + total_kits
+        total_cheese   = cheese_solo + total_kits * 5
 
         with st.container(border=True):
             st.markdown("#### 📦 What to prepare")
-            st.caption("Totals across all upcoming orders")
+            st.caption("Totals across all upcoming orders (kits = 5 doughs + 5 cheeses + 1 sauce)")
 
             r1c1, r1c2, r1c3 = st.columns(3)
             with r1c1:
                 st.markdown("**ערכות / Kits**")
-                if totals["neapolitan_kit"]:  st.write(f"נפוליטנית: **{totals['neapolitan_kit']}**")
-                if totals["spelt_kit"]:       st.write(f"כוסמין: **{totals['spelt_kit']}**")
-                if totals["gluten_free_kit"]: st.write(f"ללא גלוטן: **{totals['gluten_free_kit']}**")
+                if kit_n:  st.write(f"נפוליטנית: **{kit_n}**")
+                if kit_s:  st.write(f"כוסמין: **{kit_s}**")
+                if kit_gf: st.write(f"ללא גלוטן: **{kit_gf}**")
                 if not total_kits:
                     st.caption("—")
             with r1c2:
                 st.markdown("**בצק / Dough**")
-                if totals["neapolitan_dough"]:  st.write(f"נפוליטני: **{totals['neapolitan_dough']}**")
-                if totals["spelt_dough"]:        st.write(f"כוסמין: **{totals['spelt_dough']}**")
-                if totals["gluten_free_dough"]:  st.write(f"ללא גלוטן: **{totals['gluten_free_dough']}**")
-                if not any(totals[k] for k in ("neapolitan_dough","spelt_dough","gluten_free_dough")):
+                if total_dough_n:  st.write(f"נפוליטני: **{total_dough_n}**")
+                if total_dough_s:  st.write(f"כוסמין: **{total_dough_s}**")
+                if total_dough_gf: st.write(f"ללא גלוטן: **{total_dough_gf}**")
+                if not (total_dough_n or total_dough_s or total_dough_gf):
                     st.caption("—")
             with r1c3:
                 st.markdown("**רטבים וגבינה**")
                 st.write(f"רוטב: **{total_sauce}**")
-                if totals["white_sauce"] or totals["red_sauce"]:
-                    st.caption(f"לבן {totals['white_sauce']} · אדום {totals['red_sauce']} · ערכות {total_kits}")
+                if sauce_white or sauce_red:
+                    st.caption(f"לבן {sauce_white} · אדום {sauce_red} · ערכות {total_kits}")
                 st.write(f"גבינה: **{total_cheese}**")
-                if totals["cheese"]:
-                    st.caption(f"בנפרד {totals['cheese']} · ערכות {total_kits}")
+                if cheese_solo:
+                    st.caption(f"בנפרד {cheese_solo} · ערכות {total_kits}×5")
 
         st.divider()
 
