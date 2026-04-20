@@ -169,6 +169,20 @@ def update_order(row_number: int, customer: str, phone: str, order_date, payment
         st.error(f"Failed to update order: {e}")
         return False
 
+def update_collection_date(row_number: int, new_date) -> bool:
+    """Update the collection date for an order (Column A)."""
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return False
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        worksheet.update_cell(row_number, 1, new_date.strftime("%d/%m/%Y"))  # Column A
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to update date: {e}")
+        return False
+
 def create_invoice_now(row_number: int) -> tuple:
     """Create invoice immediately via Keep.co.il API."""
     try:
@@ -254,6 +268,13 @@ def _parse_date(date_str):
 
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
 
+today_start = datetime.combine(date.today(), datetime.min.time())
+pending_collection = [
+    o for o in all_orders
+    if _parse_date(o["date"]) >= today_start
+]
+pending_collection.sort(key=lambda o: _parse_date(o["date"]))
+
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 
 # After creating an invoice we rerun — re-click tab2 so the user stays there
@@ -271,9 +292,10 @@ if st.session_state.pop("return_to_invoice_tab", False):
     </script>
     """, height=0)
 
-tab1, tab2 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     f"⚠️ Not Paid ({len(not_paid)})",
     f"🧾 Paid - No Invoice ({len(paid_no_invoice)})",
+    f"📦 Pending Collection ({len(pending_collection)})",
 ])
 
 def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger=False):
@@ -404,3 +426,47 @@ with tab2:
     st.subheader("Paid Orders Without Invoice")
     st.caption("Payment received but no invoice has been created yet.")
     render_order_table(paid_no_invoice, allow_invoice_trigger=True)
+
+with tab3:
+    st.subheader("Pending Collection")
+    st.caption("All orders with a collection date of today or later.")
+
+    if not pending_collection:
+        st.success("✅ No upcoming collections.")
+    else:
+        for order in pending_collection:
+            paid = order["payment_method"] != "לא שולם"
+            payment_icon = "✅" if paid else "⚠️"
+
+            with st.container(border=True):
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
+
+                with col1:
+                    st.markdown(f"**{order['customer']}**")
+                    st.caption(f"📞 {order['phone'] or '—'}")
+
+                with col2:
+                    st.metric("Amount", f"₪{order['amount']}")
+
+                with col3:
+                    st.markdown(f"{payment_icon} **Payment**")
+                    st.caption(order["payment_method"] or "—")
+
+                with col4:
+                    try:
+                        d, m, y = order["date"].split("/")
+                        current_coll_date = date(int(y), int(m), int(d))
+                    except Exception:
+                        current_coll_date = date.today()
+
+                    new_coll_date = st.date_input(
+                        "Collection date",
+                        value=current_coll_date,
+                        key=f"coll_date_{order['row']}",
+                        label_visibility="collapsed",
+                    )
+                    if new_coll_date != current_coll_date:
+                        if st.button("📅 Update Date", key=f"btn_coll_{order['row']}", use_container_width=True):
+                            if update_collection_date(order["row"], new_coll_date):
+                                st.success("Date updated!")
+                                st.rerun()
