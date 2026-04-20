@@ -101,15 +101,23 @@ if df.empty:
 
 # ─── Filters ──────────────────────────────────────────────────────────────────
 
-col_f1, col_f2 = st.columns(2)
+col_f1, col_f2, col_f3 = st.columns(3)
 with col_f1:
     period = st.selectbox("Group by", ["Month", "Week", "Day"], index=0)
-with col_f2:
-    months_back = st.selectbox("Show last", [3, 6, 12, 24, 9999], format_func=lambda x: "All time" if x == 9999 else f"{x} months", index=1)
 
-if months_back != 9999:
-    cutoff = pd.Timestamp.now() - pd.DateOffset(months=months_back)
-    df = df[df["date"] >= cutoff]
+min_date = df["date"].min().date()
+max_date = df["date"].max().date()
+
+with col_f2:
+    date_from = st.date_input("From", value=min_date, min_value=min_date, max_value=max_date)
+with col_f3:
+    date_to = st.date_input("To", value=max_date, min_value=min_date, max_value=max_date)
+
+if date_from > date_to:
+    st.warning("'From' date must be before 'To' date.")
+    st.stop()
+
+df = df[(df["date"].dt.date >= date_from) & (df["date"].dt.date <= date_to)]
 
 if df.empty:
     st.info("No orders in the selected period.")
