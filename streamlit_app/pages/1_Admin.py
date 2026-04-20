@@ -527,3 +527,72 @@ with tab3:
                             if update_collection_date(order["row"], new_coll_date):
                                 st.success("Date updated!")
                                 st.rerun()
+
+                    is_editing = st.session_state.editing_row == order["row"]
+                    edit_label = "✏️ Cancel Edit" if is_editing else "✏️ Edit Order"
+                    if st.button(edit_label, key=f"btn_edit_coll_{order['row']}", use_container_width=True):
+                        st.session_state.editing_row = None if is_editing else order["row"]
+                        st.rerun()
+
+                # ── Inline Edit Form ──────────────────────────────────────
+                if st.session_state.editing_row == order["row"]:
+                    st.divider()
+                    st.markdown("#### ✏️ Edit Order")
+
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_coll_{order['row']}")
+                        try:
+                            d, m, y = order["date"].split("/")
+                            parsed_date = date(int(y), int(m), int(d))
+                        except Exception:
+                            parsed_date = date.today()
+                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_coll_{order['row']}")
+
+                    with ec2:
+                        edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_coll_{order['row']}")
+                        method_keys = list(PAYMENT_METHODS.keys())
+                        method_values = list(PAYMENT_METHODS.values())
+                        current_idx = method_values.index(order["payment_method"]) if order["payment_method"] in method_values else 0
+                        edit_payment = st.selectbox(
+                            "Payment Method",
+                            options=method_keys,
+                            index=current_idx,
+                            format_func=lambda x: PAYMENT_METHODS[x],
+                            key=f"edit_payment_coll_{order['row']}"
+                        )
+
+                    st.markdown("**Products**")
+                    edit_products = {}
+                    for pi, product in enumerate(PRODUCTS):
+                        prefix = product["column_prefix"]
+                        current_qty = order["products"].get(f"{prefix}_qty", 0)
+                        current_price = order["products"].get(f"{prefix}_price", 0.0)
+
+                        pc1, pc2, pc3 = st.columns([3, 1, 1.5])
+                        with pc1:
+                            st.markdown(f"**{product['hebrew']}** _{product['name']}_")
+                        with pc2:
+                            edit_products[f"{prefix}_qty"] = st.number_input(
+                                "Qty", min_value=0, value=current_qty, step=1,
+                                key=f"edit_coll_{prefix}_qty_{order['row']}", label_visibility="collapsed"
+                            )
+                        with pc3:
+                            edit_products[f"{prefix}_price"] = st.number_input(
+                                "Price", min_value=0.0, value=current_price, step=0.5, format="%.2f",
+                                key=f"edit_coll_{prefix}_price_{order['row']}", label_visibility="collapsed"
+                            )
+
+                    new_total = sum(
+                        (edit_products.get(f"{p['column_prefix']}_qty") or 0) *
+                        (edit_products.get(f"{p['column_prefix']}_price") or 0.0)
+                        for p in PRODUCTS
+                    )
+                    st.markdown(f"**New Total: ₪{new_total:.2f}**")
+
+                    if st.button("💾 Save Changes", key=f"save_coll_{order['row']}", type="primary"):
+                        if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
+                            st.success("✅ Order updated!")
+                            st.session_state.editing_row = None
+                            st.rerun()
+                    st.divider()
