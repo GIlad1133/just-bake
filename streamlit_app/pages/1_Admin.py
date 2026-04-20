@@ -434,6 +434,54 @@ with tab3:
     if not pending_collection:
         st.success("✅ No upcoming collections.")
     else:
+        # ── Inventory summary ─────────────────────────────────────────────
+        def _sum_qty(orders, *prefixes):
+            return sum(
+                o["products"].get(f"{p}_qty", 0)
+                for o in orders for p in prefixes
+            )
+
+        totals = {
+            "neapolitan_kit":  _sum_qty(pending_collection, "neapolitan_kit"),
+            "spelt_kit":       _sum_qty(pending_collection, "spelt_kit"),
+            "gluten_free_kit": _sum_qty(pending_collection, "gluten_free_kit"),
+            "neapolitan_dough":  _sum_qty(pending_collection, "neapolitan_dough"),
+            "spelt_dough":       _sum_qty(pending_collection, "spelt_dough"),
+            "gluten_free_dough": _sum_qty(pending_collection, "gluten_free_dough"),
+            "white_sauce": _sum_qty(pending_collection, "white_sauce"),
+            "red_sauce":   _sum_qty(pending_collection, "red_sauce"),
+            "cheese":      _sum_qty(pending_collection, "cheese"),
+        }
+
+        with st.container(border=True):
+            st.markdown("#### 📦 What to prepare")
+            st.caption("Totals across all upcoming orders")
+
+            r1c1, r1c2, r1c3 = st.columns(3)
+            with r1c1:
+                st.markdown("**ערכות / Kits**")
+                if totals["neapolitan_kit"]:  st.write(f"נפוליטנית: **{totals['neapolitan_kit']}**")
+                if totals["spelt_kit"]:       st.write(f"כוסמין: **{totals['spelt_kit']}**")
+                if totals["gluten_free_kit"]: st.write(f"ללא גלוטן: **{totals['gluten_free_kit']}**")
+                if not any(totals[k] for k in ("neapolitan_kit","spelt_kit","gluten_free_kit")):
+                    st.caption("—")
+            with r1c2:
+                st.markdown("**בצק / Dough**")
+                if totals["neapolitan_dough"]:  st.write(f"נפוליטני: **{totals['neapolitan_dough']}**")
+                if totals["spelt_dough"]:        st.write(f"כוסמין: **{totals['spelt_dough']}**")
+                if totals["gluten_free_dough"]:  st.write(f"ללא גלוטן: **{totals['gluten_free_dough']}**")
+                if not any(totals[k] for k in ("neapolitan_dough","spelt_dough","gluten_free_dough")):
+                    st.caption("—")
+            with r1c3:
+                st.markdown("**רטבים וגבינה**")
+                if totals["white_sauce"]: st.write(f"רוטב לבן: **{totals['white_sauce']}**")
+                if totals["red_sauce"]:   st.write(f"רוטב אדום: **{totals['red_sauce']}**")
+                if totals["cheese"]:      st.write(f"גבינה: **{totals['cheese']}**")
+                if not any(totals[k] for k in ("white_sauce","red_sauce","cheese")):
+                    st.caption("—")
+
+        st.divider()
+
         for order in pending_collection:
             paid = order["payment_method"] != "לא שולם"
             payment_icon = "✅" if paid else "⚠️"
