@@ -441,6 +441,7 @@ with tab3:
                 for o in orders for p in prefixes
             )
 
+        total_kits = _sum_qty(pending_collection, "neapolitan_kit", "spelt_kit", "gluten_free_kit")
         totals = {
             "neapolitan_kit":  _sum_qty(pending_collection, "neapolitan_kit"),
             "spelt_kit":       _sum_qty(pending_collection, "spelt_kit"),
@@ -452,6 +453,9 @@ with tab3:
             "red_sauce":   _sum_qty(pending_collection, "red_sauce"),
             "cheese":      _sum_qty(pending_collection, "cheese"),
         }
+        # Each kit includes 1 sauce and 1 cheese
+        total_sauce  = totals["white_sauce"] + totals["red_sauce"] + total_kits
+        total_cheese = totals["cheese"] + total_kits
 
         with st.container(border=True):
             st.markdown("#### 📦 What to prepare")
@@ -463,7 +467,7 @@ with tab3:
                 if totals["neapolitan_kit"]:  st.write(f"נפוליטנית: **{totals['neapolitan_kit']}**")
                 if totals["spelt_kit"]:       st.write(f"כוסמין: **{totals['spelt_kit']}**")
                 if totals["gluten_free_kit"]: st.write(f"ללא גלוטן: **{totals['gluten_free_kit']}**")
-                if not any(totals[k] for k in ("neapolitan_kit","spelt_kit","gluten_free_kit")):
+                if not total_kits:
                     st.caption("—")
             with r1c2:
                 st.markdown("**בצק / Dough**")
@@ -474,11 +478,12 @@ with tab3:
                     st.caption("—")
             with r1c3:
                 st.markdown("**רטבים וגבינה**")
-                if totals["white_sauce"]: st.write(f"רוטב לבן: **{totals['white_sauce']}**")
-                if totals["red_sauce"]:   st.write(f"רוטב אדום: **{totals['red_sauce']}**")
-                if totals["cheese"]:      st.write(f"גבינה: **{totals['cheese']}**")
-                if not any(totals[k] for k in ("white_sauce","red_sauce","cheese")):
-                    st.caption("—")
+                st.write(f"רוטב: **{total_sauce}**")
+                if totals["white_sauce"] or totals["red_sauce"]:
+                    st.caption(f"לבן {totals['white_sauce']} · אדום {totals['red_sauce']} · ערכות {total_kits}")
+                st.write(f"גבינה: **{total_cheese}**")
+                if totals["cheese"]:
+                    st.caption(f"בנפרד {totals['cheese']} · ערכות {total_kits}")
 
         st.divider()
 
