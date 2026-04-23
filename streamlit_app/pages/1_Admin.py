@@ -263,6 +263,12 @@ if not all_orders:
     st.info("No orders found in Google Sheets.")
     st.stop()
 
+def _parse_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%d/%m/%Y")
+    except Exception:
+        return datetime.min
+
 not_paid = sorted(
     [o for o in all_orders if o["payment_method"] == "לא שולם"],
     key=lambda o: _parse_date(o["date"])
@@ -278,12 +284,6 @@ paid_no_invoice = [
     and not o["invoice_url"].strip()
     and o["create_invoice"].strip().lower() != "yes"
 ]
-
-def _parse_date(date_str):
-    try:
-        return datetime.strptime(date_str, "%d/%m/%Y")
-    except Exception:
-        return datetime.min
 
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
 
