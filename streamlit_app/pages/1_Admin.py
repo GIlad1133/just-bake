@@ -263,7 +263,10 @@ if not all_orders:
     st.info("No orders found in Google Sheets.")
     st.stop()
 
-not_paid = [o for o in all_orders if o["payment_method"] == "לא שולם"]
+not_paid = sorted(
+    [o for o in all_orders if o["payment_method"] == "לא שולם"],
+    key=lambda o: _parse_date(o["date"])
+)
 
 include_cash = st.sidebar.checkbox("Include cash orders in No Invoice tab", value=False)
 
@@ -285,10 +288,10 @@ def _parse_date(date_str):
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
 
 today_start = datetime.combine(date.today(), datetime.min.time())
-pending_collection = [
-    o for o in all_orders
-    if _parse_date(o["date"]) >= today_start
-]
+pending_collection = sorted(
+    [o for o in all_orders if _parse_date(o["date"]) >= today_start],
+    key=lambda o: _parse_date(o["date"])
+)
 pending_collection.sort(key=lambda o: _parse_date(o["date"]))
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -495,33 +498,47 @@ with tab3:
         total_sauce    = sauce_white + sauce_red + total_kits
         total_cheese   = cheese_solo + total_kits * 5
 
-        with st.container(border=True):
-            st.markdown("#### 📦 What to prepare")
-            st.caption("Totals across all upcoming orders (kits = 5 doughs + 5 cheeses + 1 sauce)")
+        st.markdown("#### 📦 What to prepare")
 
-            r1c1, r1c2, r1c3 = st.columns(3)
-            with r1c1:
-                st.markdown("**ערכות / Kits**")
-                if kit_n:  st.write(f"נפוליטנית: **{kit_n}**")
-                if kit_s:  st.write(f"כוסמין: **{kit_s}**")
-                if kit_gf: st.write(f"ללא גלוטן: **{kit_gf}**")
-                if not total_kits:
-                    st.caption("—")
-            with r1c2:
-                st.markdown("**בצק / Dough**")
-                if total_dough_n:  st.write(f"נפוליטני: **{total_dough_n}**")
-                if total_dough_s:  st.write(f"כוסמין: **{total_dough_s}**")
-                if total_dough_gf: st.write(f"ללא גלוטן: **{total_dough_gf}**")
-                if not (total_dough_n or total_dough_s or total_dough_gf):
-                    st.caption("—")
-            with r1c3:
-                st.markdown("**רטבים וגבינה**")
-                st.write(f"רוטב: **{total_sauce}**")
-                if sauce_white or sauce_red:
-                    st.caption(f"לבן {sauce_white} · אדום {sauce_red} · ערכות {total_kits}")
-                st.write(f"גבינה: **{total_cheese}**")
-                if cheese_solo:
-                    st.caption(f"בנפרד {cheese_solo} · ערכות {total_kits}×5")
+        # Group by date and show totals per day
+        from itertools import groupby
+        for day_str, day_orders in groupby(pending_collection, key=lambda o: o["date"]):
+            day_orders = list(day_orders)
+
+            dk_n  = _sum_qty(day_orders, "neapolitan_kit")
+            dk_s  = _sum_qty(day_orders, "spelt_kit")
+            dk_gf = _sum_qty(day_orders, "gluten_free_kit")
+            dk_total = dk_n + dk_s + dk_gf
+
+            dd_n  = _sum_qty(day_orders, "neapolitan_dough")  + dk_n  * 5
+            dd_s  = _sum_qty(day_orders, "spelt_dough")       + dk_s  * 5
+            dd_gf = _sum_qty(day_orders, "gluten_free_dough") + dk_gf * 5
+            d_sauce_w = _sum_qty(day_orders, "white_sauce")
+            d_sauce_r = _sum_qty(day_orders, "red_sauce")
+            d_sauce   = d_sauce_w + d_sauce_r + dk_total
+            d_cheese  = _sum_qty(day_orders, "cheese") + dk_total * 5
+
+            with st.container(border=True):
+                st.markdown(f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
+                r1c1, r1c2, r1c3 = st.columns(3)
+                with r1c1:
+                    st.markdown("**ערכות / Kits**")
+                    if dk_n:  st.write(f"נפוליטנית: **{dk_n}**")
+                    if dk_s:  st.write(f"כוסמין: **{dk_s}**")
+                    if dk_gf: st.write(f"ללא גלוטן: **{dk_gf}**")
+                    if not dk_total: st.caption("—")
+                with r1c2:
+                    st.markdown("**בצק / Dough**")
+                    if dd_n:  st.write(f"נפוליטני: **{dd_n}**")
+                    if dd_s:  st.write(f"כוסמין: **{dd_s}**")
+                    if dd_gf: st.write(f"ללא גלוטן: **{dd_gf}**")
+                    if not (dd_n or dd_s or dd_gf): st.caption("—")
+                with r1c3:
+                    st.markdown("**רטבים וגבינה**")
+                    st.write(f"רוטב: **{d_sauce}**")
+                    if d_sauce_w or d_sauce_r:
+                        st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
+                    st.write(f"גבינה: **{d_cheese}**")
 
         st.divider()
 
