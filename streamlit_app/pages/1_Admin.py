@@ -219,13 +219,29 @@ def create_invoice_now(row_number: int) -> tuple:
     except Exception as e:
         return False, str(e)
 
+def delete_order(row_number: int) -> bool:
+    """Delete an order row from Google Sheets."""
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return False
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        worksheet.delete_rows(row_number)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to delete order: {e}")
+        return False
+
 # ─── Main Admin UI ────────────────────────────────────────────────────────────
 
 require_auth()
 
-# Track which order is being edited
+# Track which order is being edited / pending delete confirmation
 if "editing_row" not in st.session_state:
     st.session_state.editing_row = None
+if "confirm_delete_row" not in st.session_state:
+    st.session_state.confirm_delete_row = None
 
 # Admin header with logout
 col_title, col_logout = st.columns([5, 1])
@@ -353,6 +369,24 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
 
                 if order["invoice_url"]:
                     st.link_button("📄 View Invoice", order["invoice_url"], use_container_width=True)
+
+                # Delete button with confirmation
+                if st.session_state.confirm_delete_row == order["row"]:
+                    st.warning("Are you sure?")
+                    dc1, dc2 = st.columns(2)
+                    with dc1:
+                        if st.button("🗑️ Yes, delete", key=f"confirm_del_{order['row']}", use_container_width=True, type="primary"):
+                            if delete_order(order["row"]):
+                                st.session_state.confirm_delete_row = None
+                                st.rerun()
+                    with dc2:
+                        if st.button("Cancel", key=f"cancel_del_{order['row']}", use_container_width=True):
+                            st.session_state.confirm_delete_row = None
+                            st.rerun()
+                else:
+                    if st.button("🗑️ Delete", key=f"btn_del_{order['row']}", use_container_width=True):
+                        st.session_state.confirm_delete_row = order["row"]
+                        st.rerun()
 
             # ── Inline Edit Form ──────────────────────────────────────────
             if st.session_state.editing_row == order["row"]:
@@ -533,6 +567,23 @@ with tab3:
                     if st.button(edit_label, key=f"btn_edit_coll_{order['row']}", use_container_width=True):
                         st.session_state.editing_row = None if is_editing else order["row"]
                         st.rerun()
+
+                    if st.session_state.confirm_delete_row == order["row"]:
+                        st.warning("Are you sure?")
+                        dc1, dc2 = st.columns(2)
+                        with dc1:
+                            if st.button("🗑️ Yes, delete", key=f"confirm_del_coll_{order['row']}", use_container_width=True, type="primary"):
+                                if delete_order(order["row"]):
+                                    st.session_state.confirm_delete_row = None
+                                    st.rerun()
+                        with dc2:
+                            if st.button("Cancel", key=f"cancel_del_coll_{order['row']}", use_container_width=True):
+                                st.session_state.confirm_delete_row = None
+                                st.rerun()
+                    else:
+                        if st.button("🗑️ Delete", key=f"btn_del_coll_{order['row']}", use_container_width=True):
+                            st.session_state.confirm_delete_row = order["row"]
+                            st.rerun()
 
                 # ── Inline Edit Form ──────────────────────────────────────
                 if st.session_state.editing_row == order["row"]:
