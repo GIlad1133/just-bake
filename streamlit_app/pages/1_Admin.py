@@ -237,6 +237,25 @@ def delete_order(row_number: int) -> bool:
 
 require_auth()
 
+# Make date pickers start on Sunday (same fix as app.py)
+components.html("""
+<script>
+(function() {
+    const doc = window.parent.document;
+    function fixRows(root) {
+        root.querySelectorAll('*').forEach(el => {
+            if (el.children.length === 7 && el.getAttribute('aria-hidden') !== 'true') {
+                el.style.display = 'flex';
+                el.children[6].style.order = '-1';
+            }
+        });
+    }
+    new MutationObserver(() => fixRows(doc.body))
+        .observe(doc.body, { childList: true, subtree: true });
+})();
+</script>
+""", height=1)
+
 # Track which order is being edited / pending delete confirmation
 if "editing_row" not in st.session_state:
     st.session_state.editing_row = None
