@@ -4,7 +4,6 @@ Sales insights: revenue over time, top customers, product breakdown.
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 import altair as alt
 from datetime import datetime
@@ -93,25 +92,6 @@ def load_data() -> pd.DataFrame:
 st.title("📊 Analytics")
 st.divider()
 
-# Make date pickers start on Sunday (same fix as app.py)
-components.html("""
-<script>
-(function() {
-    const doc = window.parent.document;
-    function fixRows(root) {
-        root.querySelectorAll('*').forEach(el => {
-            if (el.children.length === 7 && el.getAttribute('aria-hidden') !== 'true') {
-                el.style.display = 'flex';
-                el.children[6].style.order = '-1';
-            }
-        });
-    }
-    new MutationObserver(() => fixRows(doc.body))
-        .observe(doc.body, { childList: true, subtree: true });
-})();
-</script>
-""", height=1)
-
 with st.spinner("Loading data..."):
     df = load_data()
 
@@ -129,9 +109,9 @@ min_date = df["date"].min().date()
 max_date = df["date"].max().date()
 
 with col_f2:
-    date_from = st.date_input("From", value=min_date, min_value=min_date, max_value=max_date)
+    date_from = st.date_input("From", value=min_date, min_value=min_date)
 with col_f3:
-    date_to = st.date_input("To", value=max_date, min_value=min_date, max_value=max_date)
+    date_to = st.date_input("To", value=max_date, min_value=min_date)
 
 if date_from > date_to:
     st.warning("'From' date must be before 'To' date.")

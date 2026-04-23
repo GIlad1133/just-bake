@@ -4,7 +4,6 @@ Streamlit web app for entering new pizza orders.
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import datetime
 import uuid
 import os
@@ -140,27 +139,6 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
 
 st.title("🍕 Just Bake - New Order")
 
-# Make the date picker start on Sunday
-# Finds calendar rows by structure (7 children) — no class names needed
-components.html("""
-<script>
-(function() {
-    const doc = window.parent.document;
-
-    function fixRows(root) {
-        root.querySelectorAll('*').forEach(el => {
-            if (el.children.length === 7 && el.getAttribute('aria-hidden') !== 'true') {
-                el.style.display = 'flex';
-                el.children[6].style.order = '-1';
-            }
-        });
-    }
-
-    new MutationObserver(() => fixRows(doc.body))
-        .observe(doc.body, { childList: true, subtree: true });
-})();
-</script>
-""", height=1)
 
 st.divider()
 
