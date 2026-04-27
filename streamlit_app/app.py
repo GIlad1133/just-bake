@@ -121,6 +121,8 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
         ]
 
         for i, product in enumerate(PRODUCTS):
+            if "qty_col" in product:
+                continue  # custom column position — appended after metadata below
             prefix = product["column_prefix"]
             if i == 9:  # Cheese: Price then Qty
                 row_data.append(product_data.get(f"{prefix}_price") or 0.0)
@@ -130,6 +132,13 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
                 row_data.append(product_data.get(f"{prefix}_price") or 0.0)
 
         row_data += [row_id, "", phone or "", business_id or ""]
+
+        for product in PRODUCTS:
+            if "qty_col" not in product:
+                continue
+            prefix = product["column_prefix"]
+            row_data.append(product_data.get(f"{prefix}_qty") or 0)
+            row_data.append(product_data.get(f"{prefix}_price") or 0.0)
         worksheet.append_row(row_data)
         return True, row_id
     except Exception as e:

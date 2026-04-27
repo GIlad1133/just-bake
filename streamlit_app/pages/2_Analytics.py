@@ -69,7 +69,11 @@ def load_data() -> pd.DataFrame:
         for pi, product in enumerate(PRODUCTS):
             prefix = product["column_prefix"]
             try:
-                if pi == 9:  # Cheese: price at 24, qty at 25
+                if "qty_col" in product:
+                    qi, pi_ = product["qty_col"], product["price_col"]
+                    qty = float(row[qi]) if len(row) > qi and row[qi] else 0.0
+                    price = float(row[pi_]) if len(row) > pi_ and row[pi_] else 0.0
+                elif pi == 9:  # Cheese: price at 24, qty at 25
                     price = float(row[24]) if len(row) > 24 and row[24] else 0.0
                     qty = float(row[25]) if len(row) > 25 and row[25] else 0.0
                 else:

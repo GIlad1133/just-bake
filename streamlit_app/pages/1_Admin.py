@@ -82,7 +82,10 @@ def load_all_orders():
             products = {}
             for pi, product in enumerate(PRODUCTS):
                 prefix = product["column_prefix"]
-                if pi == 9:  # Cheese: Price(Y=24) then Qty(Z=25) — swapped
+                if "qty_col" in product:
+                    products[f"{prefix}_qty"] = _safe_int(row, product["qty_col"])
+                    products[f"{prefix}_price"] = _safe_float(row, product["price_col"])
+                elif pi == 9:  # Cheese: Price(Y=24) then Qty(Z=25) — swapped
                     products[f"{prefix}_price"] = _safe_float(row, 24)
                     products[f"{prefix}_qty"] = _safe_int(row, 25)
                 else:
@@ -517,10 +520,11 @@ with tab3:
             d_sauce_r = _sum_qty(day_orders, "red_sauce")
             d_sauce   = d_sauce_w + d_sauce_r + dk_total
             d_cheese  = _sum_qty(day_orders, "cheese") + dk_total * 5
+            d_sandwiches = _sum_qty(day_orders, "pizza_sandwich")
 
             with st.container(border=True):
                 st.markdown(f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
-                r1c1, r1c2, r1c3 = st.columns(3)
+                r1c1, r1c2, r1c3, r1c4 = st.columns(4)
                 with r1c1:
                     st.markdown("**ערכות / Kits**")
                     if dk_n:  st.write(f"נפוליטנית: **{dk_n}**")
@@ -539,6 +543,12 @@ with tab3:
                     if d_sauce_w or d_sauce_r:
                         st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
                     st.write(f"גבינה: **{d_cheese}**")
+                with r1c4:
+                    st.markdown("**סנדאות פיצה**")
+                    if d_sandwiches:
+                        st.write(f"סנדאות: **{d_sandwiches}**")
+                    else:
+                        st.caption("—")
 
         st.divider()
 
