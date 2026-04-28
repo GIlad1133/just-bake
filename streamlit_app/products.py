@@ -65,8 +65,8 @@ PRODUCTS = [
         "column_prefix": "cheese"
     },
     {
-        "name": "Pizza Sandwich",
-        "hebrew": "סנדאות פיצה",
+        "name": "Pizza Workshop",
+        "hebrew": "סדנאות פיצה",
         "default_price": 0,
         "column_prefix": "pizza_sandwich",
         "qty_col": 30,   # AE — appended after business_id to avoid shifting existing columns

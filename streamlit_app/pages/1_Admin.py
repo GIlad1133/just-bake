@@ -544,9 +544,9 @@ with tab3:
                         st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
                     st.write(f"גבינה: **{d_cheese}**")
                 with r1c4:
-                    st.markdown("**סנדאות פיצה**")
+                    st.markdown("**סדנאות פיצה**")
                     if d_sandwiches:
-                        st.write(f"סנדאות: **{d_sandwiches}**")
+                        st.write(f"סדנאות: **{d_sandwiches}**")
                     else:
                         st.caption("—")
 
