@@ -150,8 +150,10 @@ def update_order(row_number: int, customer: str, phone: str, order_date, payment
             payment_method,
         ]
 
-        # Products G–Z
+        # Products G–Z (standard contiguous block — skip products with custom column positions)
         for pi, product in enumerate(PRODUCTS):
+            if "qty_col" in product:
+                continue
             prefix = product["column_prefix"]
             if pi == 9:  # Cheese: Price then Qty
                 row_data.append(products.get(f"{prefix}_price") or 0.0)
@@ -165,6 +167,13 @@ def update_order(row_number: int, customer: str, phone: str, order_date, payment
         worksheet.update(f"G{row_number}:Z{row_number}", [row_data[4:]])
         # Update phone (AC = column 29)
         worksheet.update_cell(row_number, 29, phone)
+        # Update products stored in non-contiguous columns (e.g. Pizza Workshop at AE/AF)
+        for product in PRODUCTS:
+            if "qty_col" not in product:
+                continue
+            prefix = product["column_prefix"]
+            worksheet.update_cell(row_number, product["qty_col"] + 1, products.get(f"{prefix}_qty") or 0)
+            worksheet.update_cell(row_number, product["price_col"] + 1, products.get(f"{prefix}_price") or 0.0)
 
         st.cache_data.clear()
         return True
