@@ -47,13 +47,27 @@ def get_sheets_client():
     return gspread.authorize(credentials)
 
 
+@st.cache_resource
+def _open_spreadsheet(spreadsheet_id: str):
+    """Cached spreadsheet handle keyed by id — avoids fetching metadata on every rerun."""
+    return get_sheets_client().open_by_key(spreadsheet_id)
+
+
 def get_spreadsheet():
-    """Get the spreadsheet by ID from secrets or env."""
-    client = get_sheets_client()
+    """Get the spreadsheet by ID from secrets or env.
+
+    Cached across reruns; if the cached handle goes stale (auth refresh,
+    transient API error), we clear the cache and retry once before giving up.
+    """
     spreadsheet_id = (
         st.secrets.get("spreadsheet_id")
         or os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID")
     )
     if not spreadsheet_id:
         raise ValueError("No spreadsheet ID found.")
-    return client.open_by_key(spreadsheet_id)
+    try:
+        return _open_spreadsheet(spreadsheet_id)
+    except Exception:
+        _open_spreadsheet.clear()
+        get_sheets_client.clear()
+        return _open_spreadsheet(spreadsheet_id)
