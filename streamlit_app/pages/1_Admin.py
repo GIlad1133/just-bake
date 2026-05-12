@@ -214,10 +214,13 @@ def update_pickup_status(row_number: int, picked_up: bool) -> bool:
         st.error(f"Failed to update pickup status: {e}")
         return False
 
-def backfill_picked_up_from_invoices() -> int:
-    """Mark orders with an invoice URL as picked up, when AG is still blank.
+def backfill_picked_up() -> int:
+    """Mark historical orders as picked up when AG is blank.
 
-    Idempotent: skips rows already marked yes/no. Returns count updated.
+    Heuristic: has invoice URL OR (paid AND date already passed).
+    Cash orders never get invoice URLs but are paid at pickup, so
+    any cash-paid past order is treated as picked up. Idempotent —
+    skips rows already marked yes/no. Returns count updated.
     """
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
@@ -228,11 +231,19 @@ def backfill_picked_up_from_invoices() -> int:
         if len(rows) <= 1:
             return 0
 
+        today_start = datetime.combine(date.today(), datetime.min.time())
         updates = []
         for i, row in enumerate(rows[1:], start=2):
-            has_invoice = len(row) > 5 and row[5].strip()
             ag_value = row[32].strip() if len(row) > 32 else ""
-            if has_invoice and not ag_value:
+            if ag_value:
+                continue  # already explicitly marked yes/no — leave alone
+
+            has_invoice = bool(len(row) > 5 and row[5].strip())
+            payment_method = row[3] if len(row) > 3 else ""
+            order_date = _parse_date(row[0] if len(row) > 0 else "")
+            paid_and_past = _is_paid(payment_method) and order_date < today_start
+
+            if has_invoice or paid_and_past:
                 updates.append({"range": f"AG{i}", "values": [["yes"]]})
 
         if updates:
@@ -360,18 +371,19 @@ show_picked_up = st.sidebar.checkbox("Show recently picked-up orders", value=Fal
 
 with st.sidebar.expander("⚙️ Tools"):
     st.caption(
-        "**Backfill picked-up from invoices**\n\n"
-        "Marks every order that already has an invoice URL as picked up "
-        "(only touches rows you haven't explicitly marked yet). "
+        "**Backfill picked-up**\n\n"
+        "Marks an order as picked up if it has an invoice URL, or if it was "
+        "already paid (cash/Bit/Paybox) and its collection date is in the past. "
+        "Only touches rows you haven't explicitly marked yet. "
         "Safe to run multiple times."
     )
     if st.button("🪄 Run backfill", use_container_width=True):
-        count = backfill_picked_up_from_invoices()
+        count = backfill_picked_up()
         if count > 0:
             st.success(f"✅ Marked {count} orders as picked up")
             st.rerun()
         else:
-            st.info("Nothing to backfill — all invoiced orders already handled.")
+            st.info("Nothing to backfill — all eligible orders already handled.")
 
 today_start = datetime.combine(date.today(), datetime.min.time())
 tomorrow_start = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
