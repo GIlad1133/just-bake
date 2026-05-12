@@ -5,7 +5,7 @@ Secure admin interface for managing orders, payments, and invoices.
 
 import streamlit as st
 import streamlit.components.v1 as components
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import os
 import sys
 from dotenv import load_dotenv
@@ -105,6 +105,7 @@ def load_all_orders():
                 "row_id": row[26] if len(row) > 26 else "",  # AA
                 "status": row[27] if len(row) > 27 else "",  # AB
                 "phone": row[28] if len(row) > 28 else "",   # AC
+                "picked_up": (row[32].strip().lower() == "yes") if len(row) > 32 and row[32] else False,  # AG
                 "products": products,
             })
         return orders
@@ -193,6 +194,20 @@ def update_collection_date(row_number: int, new_date) -> bool:
         return True
     except Exception as e:
         st.error(f"Failed to update date: {e}")
+        return False
+
+def update_pickup_status(row_number: int, picked_up: bool) -> bool:
+    """Mark/unmark an order as picked up (Column AG = column 33)."""
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return False
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        worksheet.update_cell(row_number, 33, "yes" if picked_up else "")
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to update pickup status: {e}")
         return False
 
 def create_invoice_now(row_number: int) -> tuple:
@@ -299,12 +314,24 @@ paid_no_invoice = [
 
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
 
+show_picked_up = st.sidebar.checkbox("Show recently picked-up orders", value=False)
+
 today_start = datetime.combine(date.today(), datetime.min.time())
-pending_collection = sorted(
-    [o for o in all_orders if _parse_date(o["date"]) >= today_start],
+tomorrow_start = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
+
+pickup_queue = sorted(
+    [o for o in all_orders if not o["picked_up"]],
     key=lambda o: _parse_date(o["date"])
 )
-pending_collection.sort(key=lambda o: _parse_date(o["date"]))
+overdue_orders = [o for o in pickup_queue if _parse_date(o["date"]) < today_start]
+today_pickups = [o for o in pickup_queue if today_start <= _parse_date(o["date"]) < tomorrow_start]
+upcoming_pickups = [o for o in pickup_queue if _parse_date(o["date"]) >= tomorrow_start]
+
+recently_picked = sorted(
+    [o for o in all_orders if o["picked_up"]],
+    key=lambda o: _parse_date(o["date"]),
+    reverse=True
+)[:20] if show_picked_up else []
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 
@@ -323,10 +350,14 @@ if st.session_state.pop("return_to_invoice_tab", False):
     </script>
     """, height=0)
 
+pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)})"
+if overdue_orders:
+    pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)} · 🔴 {len(overdue_orders)} overdue)"
+
 tab1, tab2, tab3 = st.tabs([
     f"⚠️ Not Paid ({len(not_paid)})",
     f"🧾 Paid - No Invoice ({len(paid_no_invoice)})",
-    f"📦 Pending Collection ({len(pending_collection)})",
+    pickup_tab_label,
 ])
 
 def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger=False):
@@ -477,100 +508,86 @@ with tab2:
     render_order_table(paid_no_invoice, allow_invoice_trigger=True)
 
 with tab3:
-    st.subheader("Pending Collection")
-    st.caption("All orders with a collection date of today or later.")
+    st.subheader("📦 Pickup Queue")
+    st.caption("All orders not yet picked up — paid or not. Mark each one as picked up when the customer collects it.")
 
-    if not pending_collection:
-        st.success("✅ No upcoming collections.")
+    if not pickup_queue and not recently_picked:
+        st.success("✅ All caught up — nothing pending pickup!")
     else:
-        # ── Inventory summary ─────────────────────────────────────────────
         def _sum_qty(orders, *prefixes):
             return sum(
                 o["products"].get(f"{p}_qty", 0)
                 for o in orders for p in prefixes
             )
 
-        kit_n  = _sum_qty(pending_collection, "neapolitan_kit")
-        kit_s  = _sum_qty(pending_collection, "spelt_kit")
-        kit_gf = _sum_qty(pending_collection, "gluten_free_kit")
-        total_kits = kit_n + kit_s + kit_gf
+        # ── Inventory summary (today + upcoming only; overdue should be made already) ──
+        prep_orders = today_pickups + upcoming_pickups
+        if prep_orders:
+            st.markdown("#### 📦 What to prepare")
+            from itertools import groupby
+            for day_str, day_orders in groupby(prep_orders, key=lambda o: o["date"]):
+                day_orders = list(day_orders)
 
-        # Standalone quantities
-        dough_n  = _sum_qty(pending_collection, "neapolitan_dough")
-        dough_s  = _sum_qty(pending_collection, "spelt_dough")
-        dough_gf = _sum_qty(pending_collection, "gluten_free_dough")
-        sauce_white = _sum_qty(pending_collection, "white_sauce")
-        sauce_red   = _sum_qty(pending_collection, "red_sauce")
-        cheese_solo = _sum_qty(pending_collection, "cheese")
+                dk_n  = _sum_qty(day_orders, "neapolitan_kit")
+                dk_s  = _sum_qty(day_orders, "spelt_kit")
+                dk_gf = _sum_qty(day_orders, "gluten_free_kit")
+                dk_total = dk_n + dk_s + dk_gf
 
-        # Each kit = 5 doughs + 5 cheeses + 1 sauce
-        total_dough_n  = dough_n  + kit_n  * 5
-        total_dough_s  = dough_s  + kit_s  * 5
-        total_dough_gf = dough_gf + kit_gf * 5
-        total_sauce    = sauce_white + sauce_red + total_kits
-        total_cheese   = cheese_solo + total_kits * 5
+                dd_n  = _sum_qty(day_orders, "neapolitan_dough")  + dk_n  * 5
+                dd_s  = _sum_qty(day_orders, "spelt_dough")       + dk_s  * 5
+                dd_gf = _sum_qty(day_orders, "gluten_free_dough") + dk_gf * 5
+                d_sauce_w = _sum_qty(day_orders, "white_sauce")
+                d_sauce_r = _sum_qty(day_orders, "red_sauce")
+                d_sauce   = d_sauce_w + d_sauce_r + dk_total
+                d_cheese  = _sum_qty(day_orders, "cheese") + dk_total * 5
+                d_sandwiches = _sum_qty(day_orders, "pizza_sandwich")
 
-        st.markdown("#### 📦 What to prepare")
+                with st.container(border=True):
+                    st.markdown(f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
+                    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+                    with r1c1:
+                        st.markdown("**ערכות / Kits**")
+                        if dk_n:  st.write(f"נפוליטנית: **{dk_n}**")
+                        if dk_s:  st.write(f"כוסמין: **{dk_s}**")
+                        if dk_gf: st.write(f"ללא גלוטן: **{dk_gf}**")
+                        if not dk_total: st.caption("—")
+                    with r1c2:
+                        st.markdown("**בצק / Dough**")
+                        if dd_n:  st.write(f"נפוליטני: **{dd_n}**")
+                        if dd_s:  st.write(f"כוסמין: **{dd_s}**")
+                        if dd_gf: st.write(f"ללא גלוטן: **{dd_gf}**")
+                        if not (dd_n or dd_s or dd_gf): st.caption("—")
+                    with r1c3:
+                        st.markdown("**רטבים וגבינה**")
+                        st.write(f"רוטב: **{d_sauce}**")
+                        if d_sauce_w or d_sauce_r:
+                            st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
+                        st.write(f"גבינה: **{d_cheese}**")
+                    with r1c4:
+                        st.markdown("**סדנאות פיצה**")
+                        if d_sandwiches:
+                            st.write(f"סדנאות: **{d_sandwiches}**")
+                        else:
+                            st.caption("—")
 
-        # Group by date and show totals per day
-        from itertools import groupby
-        for day_str, day_orders in groupby(pending_collection, key=lambda o: o["date"]):
-            day_orders = list(day_orders)
+            st.divider()
 
-            dk_n  = _sum_qty(day_orders, "neapolitan_kit")
-            dk_s  = _sum_qty(day_orders, "spelt_kit")
-            dk_gf = _sum_qty(day_orders, "gluten_free_kit")
-            dk_total = dk_n + dk_s + dk_gf
-
-            dd_n  = _sum_qty(day_orders, "neapolitan_dough")  + dk_n  * 5
-            dd_s  = _sum_qty(day_orders, "spelt_dough")       + dk_s  * 5
-            dd_gf = _sum_qty(day_orders, "gluten_free_dough") + dk_gf * 5
-            d_sauce_w = _sum_qty(day_orders, "white_sauce")
-            d_sauce_r = _sum_qty(day_orders, "red_sauce")
-            d_sauce   = d_sauce_w + d_sauce_r + dk_total
-            d_cheese  = _sum_qty(day_orders, "cheese") + dk_total * 5
-            d_sandwiches = _sum_qty(day_orders, "pizza_sandwich")
-
-            with st.container(border=True):
-                st.markdown(f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
-                r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                with r1c1:
-                    st.markdown("**ערכות / Kits**")
-                    if dk_n:  st.write(f"נפוליטנית: **{dk_n}**")
-                    if dk_s:  st.write(f"כוסמין: **{dk_s}**")
-                    if dk_gf: st.write(f"ללא גלוטן: **{dk_gf}**")
-                    if not dk_total: st.caption("—")
-                with r1c2:
-                    st.markdown("**בצק / Dough**")
-                    if dd_n:  st.write(f"נפוליטני: **{dd_n}**")
-                    if dd_s:  st.write(f"כוסמין: **{dd_s}**")
-                    if dd_gf: st.write(f"ללא גלוטן: **{dd_gf}**")
-                    if not (dd_n or dd_s or dd_gf): st.caption("—")
-                with r1c3:
-                    st.markdown("**רטבים וגבינה**")
-                    st.write(f"רוטב: **{d_sauce}**")
-                    if d_sauce_w or d_sauce_r:
-                        st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
-                    st.write(f"גבינה: **{d_cheese}**")
-                with r1c4:
-                    st.markdown("**סדנאות פיצה**")
-                    if d_sandwiches:
-                        st.write(f"סדנאות: **{d_sandwiches}**")
-                    else:
-                        st.caption("—")
-
-        st.divider()
-
-        for order in pending_collection:
+        # ── Order card renderer (shared across all sections) ──────────────
+        def _render_order_card(order, banner_color=None, banner_text=None):
             paid = order["payment_method"] != "לא שולם"
             payment_icon = "✅" if paid else "⚠️"
 
             with st.container(border=True):
+                if banner_color == "red" and banner_text:
+                    st.error(banner_text)
+                elif banner_color == "green" and banner_text:
+                    st.success(banner_text)
+
                 col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
 
                 with col1:
                     st.markdown(f"**{order['customer']}**")
-                    st.caption(f"📞 {order['phone'] or '—'}")
+                    st.caption(f"📅 {order['date']}  ·  📞 {order['phone'] or '—'}")
 
                 with col2:
                     st.metric("Amount", f"₪{order['amount']}")
@@ -580,6 +597,17 @@ with tab3:
                     st.caption(order["payment_method"] or "—")
 
                 with col4:
+                    # Primary action: pickup toggle
+                    if order["picked_up"]:
+                        if st.button("↩️ Unmark Picked Up", key=f"unpick_{order['row']}", use_container_width=True):
+                            if update_pickup_status(order["row"], False):
+                                st.rerun()
+                    else:
+                        if st.button("✅ Mark as Picked Up", key=f"pick_{order['row']}", use_container_width=True, type="primary"):
+                            if update_pickup_status(order["row"], True):
+                                st.rerun()
+
+                    # Date editor
                     try:
                         d, m, y = order["date"].split("/")
                         current_coll_date = date(int(y), int(m), int(d))
@@ -589,55 +617,54 @@ with tab3:
                     new_coll_date = st.date_input(
                         "Collection date",
                         value=current_coll_date,
-                        key=f"coll_date_{order['row']}",
+                        key=f"coll_date_pq_{order['row']}",
                         label_visibility="collapsed",
                     )
                     if new_coll_date != current_coll_date:
-                        if st.button("📅 Update Date", key=f"btn_coll_{order['row']}", use_container_width=True):
+                        if st.button("📅 Update Date", key=f"btn_coll_pq_{order['row']}", use_container_width=True):
                             if update_collection_date(order["row"], new_coll_date):
-                                st.success("Date updated!")
                                 st.rerun()
 
+                    # Edit toggle
                     is_editing = st.session_state.editing_row == order["row"]
                     edit_label = "✏️ Cancel Edit" if is_editing else "✏️ Edit Order"
-                    if st.button(edit_label, key=f"btn_edit_coll_{order['row']}", use_container_width=True):
+                    if st.button(edit_label, key=f"btn_edit_pq_{order['row']}", use_container_width=True):
                         st.session_state.editing_row = None if is_editing else order["row"]
                         st.rerun()
 
+                    # Delete with confirmation
                     if st.session_state.confirm_delete_row == order["row"]:
                         st.warning("Are you sure?")
                         dc1, dc2 = st.columns(2)
                         with dc1:
-                            if st.button("🗑️ Yes, delete", key=f"confirm_del_coll_{order['row']}", use_container_width=True, type="primary"):
+                            if st.button("🗑️ Yes, delete", key=f"confirm_del_pq_{order['row']}", use_container_width=True, type="primary"):
                                 if delete_order(order["row"]):
                                     st.session_state.confirm_delete_row = None
                                     st.rerun()
                         with dc2:
-                            if st.button("Cancel", key=f"cancel_del_coll_{order['row']}", use_container_width=True):
+                            if st.button("Cancel", key=f"cancel_del_pq_{order['row']}", use_container_width=True):
                                 st.session_state.confirm_delete_row = None
                                 st.rerun()
                     else:
-                        if st.button("🗑️ Delete", key=f"btn_del_coll_{order['row']}", use_container_width=True):
+                        if st.button("🗑️ Delete", key=f"btn_del_pq_{order['row']}", use_container_width=True):
                             st.session_state.confirm_delete_row = order["row"]
                             st.rerun()
 
-                # ── Inline Edit Form ──────────────────────────────────────
+                # Inline edit form
                 if st.session_state.editing_row == order["row"]:
                     st.divider()
                     st.markdown("#### ✏️ Edit Order")
-
                     ec1, ec2 = st.columns(2)
                     with ec1:
-                        edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_coll_{order['row']}")
+                        edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_pq_{order['row']}")
                         try:
                             d, m, y = order["date"].split("/")
                             parsed_date = date(int(y), int(m), int(d))
                         except Exception:
                             parsed_date = date.today()
-                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_coll_{order['row']}")
-
+                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_pq_{order['row']}")
                     with ec2:
-                        edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_coll_{order['row']}")
+                        edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_pq_{order['row']}")
                         method_keys = list(PAYMENT_METHODS.keys())
                         method_values = list(PAYMENT_METHODS.values())
                         current_idx = method_values.index(order["payment_method"]) if order["payment_method"] in method_values else 0
@@ -646,7 +673,7 @@ with tab3:
                             options=method_keys,
                             index=current_idx,
                             format_func=lambda x: PAYMENT_METHODS[x],
-                            key=f"edit_payment_coll_{order['row']}"
+                            key=f"edit_payment_pq_{order['row']}"
                         )
 
                     st.markdown("**Products**")
@@ -655,19 +682,18 @@ with tab3:
                         prefix = product["column_prefix"]
                         current_qty = order["products"].get(f"{prefix}_qty", 0)
                         current_price = order["products"].get(f"{prefix}_price", 0.0)
-
                         pc1, pc2, pc3 = st.columns([3, 1, 1.5])
                         with pc1:
                             st.markdown(f"**{product['hebrew']}** _{product['name']}_")
                         with pc2:
                             edit_products[f"{prefix}_qty"] = st.number_input(
                                 "Qty", min_value=0, value=current_qty, step=1,
-                                key=f"edit_coll_{prefix}_qty_{order['row']}", label_visibility="collapsed"
+                                key=f"edit_pq_{prefix}_qty_{order['row']}", label_visibility="collapsed"
                             )
                         with pc3:
                             edit_products[f"{prefix}_price"] = st.number_input(
                                 "Price", min_value=0.0, value=current_price, step=0.5, format="%.2f",
-                                key=f"edit_coll_{prefix}_price_{order['row']}", label_visibility="collapsed"
+                                key=f"edit_pq_{prefix}_price_{order['row']}", label_visibility="collapsed"
                             )
 
                     new_total = sum(
@@ -676,10 +702,38 @@ with tab3:
                         for p in PRODUCTS
                     )
                     st.markdown(f"**New Total: ₪{new_total:.2f}**")
-
-                    if st.button("💾 Save Changes", key=f"save_coll_{order['row']}", type="primary"):
+                    if st.button("💾 Save Changes", key=f"save_pq_{order['row']}", type="primary"):
                         if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
                             st.success("✅ Order updated!")
                             st.session_state.editing_row = None
                             st.rerun()
                     st.divider()
+
+        # ── Overdue section (most urgent — safety net for stale dates) ────
+        if overdue_orders:
+            st.markdown(f"### 🔴 Overdue ({len(overdue_orders)})")
+            st.caption("Collection date already passed. Mark as picked up if collected, or update the date if postponed.")
+            for order in overdue_orders:
+                _render_order_card(order, banner_color="red", banner_text=f"🔴 OVERDUE — was scheduled for {order['date']}")
+            st.divider()
+
+        # ── Today section ─────────────────────────────────────────────────
+        if today_pickups:
+            st.markdown(f"### 📅 Today ({len(today_pickups)})")
+            for order in today_pickups:
+                _render_order_card(order)
+            st.divider()
+
+        # ── Upcoming section ──────────────────────────────────────────────
+        if upcoming_pickups:
+            st.markdown(f"### 🟢 Upcoming ({len(upcoming_pickups)})")
+            for order in upcoming_pickups:
+                _render_order_card(order)
+
+        # ── Recently picked up (sidebar toggle — for undoing mistakes) ────
+        if show_picked_up and recently_picked:
+            st.divider()
+            st.markdown(f"### ✅ Recently Picked Up ({len(recently_picked)})")
+            st.caption("Click 'Unmark' if any were marked by mistake.")
+            for order in recently_picked:
+                _render_order_card(order, banner_color="green", banner_text=f"✅ Picked up — was on {order['date']}")
