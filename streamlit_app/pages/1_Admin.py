@@ -329,18 +329,27 @@ def _parse_date(date_str):
     except Exception:
         return datetime.min
 
+UNPAID_PAYMENT_VALUES = {"לא שולם", "", "-"}
+CASH_VALUES = ("מזומן", "cash", "Cash")
+
+def _is_paid(payment_method: str) -> bool:
+    """Cash, Bit, Paybox → paid. 'לא שולם', empty, '-' → unpaid."""
+    return (payment_method or "").strip() not in UNPAID_PAYMENT_VALUES
+
+def _is_cash(payment_method: str) -> bool:
+    return (payment_method or "").strip() in CASH_VALUES
+
 not_paid = sorted(
-    [o for o in all_orders if o["payment_method"] == "לא שולם"],
+    [o for o in all_orders if not _is_paid(o["payment_method"])],
     key=lambda o: _parse_date(o["date"])
 )
 
 include_cash = st.sidebar.checkbox("Include cash orders in No Invoice tab", value=False)
 
-CASH_VALUES = ("מזומן", "cash", "Cash")
-excluded = ("לא שולם",) if include_cash else ("לא שולם", *CASH_VALUES)
 paid_no_invoice = [
     o for o in all_orders
-    if o["payment_method"] not in excluded
+    if _is_paid(o["payment_method"])
+    and (include_cash or not _is_cash(o["payment_method"]))
     and not o["invoice_url"].strip()
     and o["create_invoice"].strip().lower() != "yes"
 ]
@@ -397,6 +406,26 @@ if st.session_state.pop("return_to_invoice_tab", False):
     })();
     </script>
     """, height=0)
+
+# After pickup actions we rerun — re-click tab3 (index 2) so the user stays in the queue
+if st.session_state.pop("return_to_pickup_tab", False):
+    components.html("""
+    <script>
+    (function() {
+        function clickTab() {
+            const tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
+            if (tabs.length > 2) { tabs[2].click(); return; }
+            setTimeout(clickTab, 50);
+        }
+        setTimeout(clickTab, 50);
+    })();
+    </script>
+    """, height=0)
+
+def _pickup_rerun():
+    """Set tab-restore flag, then rerun. Use inside any pickup-queue action."""
+    st.session_state.return_to_pickup_tab = True
+    st.rerun()
 
 pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)})"
 if overdue_orders:
@@ -622,7 +651,7 @@ with tab3:
 
         # ── Order card renderer (shared across all sections) ──────────────
         def _render_order_card(order, banner_color=None, banner_text=None):
-            paid = order["payment_method"] != "לא שולם"
+            paid = _is_paid(order["payment_method"])
             payment_icon = "✅" if paid else "⚠️"
 
             with st.container(border=True):
@@ -649,11 +678,11 @@ with tab3:
                     if order["picked_up"]:
                         if st.button("↩️ Unmark Picked Up", key=f"unpick_{order['row']}", use_container_width=True):
                             if update_pickup_status(order["row"], False):
-                                st.rerun()
+                                _pickup_rerun()
                     else:
                         if st.button("✅ Mark as Picked Up", key=f"pick_{order['row']}", use_container_width=True, type="primary"):
                             if update_pickup_status(order["row"], True):
-                                st.rerun()
+                                _pickup_rerun()
 
                     # Date editor
                     try:
@@ -671,14 +700,14 @@ with tab3:
                     if new_coll_date != current_coll_date:
                         if st.button("📅 Update Date", key=f"btn_coll_pq_{order['row']}", use_container_width=True):
                             if update_collection_date(order["row"], new_coll_date):
-                                st.rerun()
+                                _pickup_rerun()
 
                     # Edit toggle
                     is_editing = st.session_state.editing_row == order["row"]
                     edit_label = "✏️ Cancel Edit" if is_editing else "✏️ Edit Order"
                     if st.button(edit_label, key=f"btn_edit_pq_{order['row']}", use_container_width=True):
                         st.session_state.editing_row = None if is_editing else order["row"]
-                        st.rerun()
+                        _pickup_rerun()
 
                     # Delete with confirmation
                     if st.session_state.confirm_delete_row == order["row"]:
@@ -688,15 +717,15 @@ with tab3:
                             if st.button("🗑️ Yes, delete", key=f"confirm_del_pq_{order['row']}", use_container_width=True, type="primary"):
                                 if delete_order(order["row"]):
                                     st.session_state.confirm_delete_row = None
-                                    st.rerun()
+                                    _pickup_rerun()
                         with dc2:
                             if st.button("Cancel", key=f"cancel_del_pq_{order['row']}", use_container_width=True):
                                 st.session_state.confirm_delete_row = None
-                                st.rerun()
+                                _pickup_rerun()
                     else:
                         if st.button("🗑️ Delete", key=f"btn_del_pq_{order['row']}", use_container_width=True):
                             st.session_state.confirm_delete_row = order["row"]
-                            st.rerun()
+                            _pickup_rerun()
 
                 # Inline edit form
                 if st.session_state.editing_row == order["row"]:
@@ -754,7 +783,7 @@ with tab3:
                         if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
                             st.success("✅ Order updated!")
                             st.session_state.editing_row = None
-                            st.rerun()
+                            _pickup_rerun()
                     st.divider()
 
         # ── Overdue section (most urgent — safety net for stale dates) ────
