@@ -290,6 +290,65 @@ def create_invoice_now(row_number: int) -> tuple:
     except Exception as e:
         return False, str(e)
 
+def bulk_create_invoices(row_numbers: list) -> dict:
+    """Create invoices for many orders in one pass.
+
+    Shares one Sheets+Keep client instead of recreating per call.
+    Batch-writes the 'yes' flags, reads pending orders once, then
+    processes each. Returns {successes: int, failures: list[(row, msg)]}.
+    """
+    result = {"successes": 0, "failures": []}
+    if not row_numbers:
+        return result
+
+    try:
+        credentials_json = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
+        spreadsheet_id = st.secrets.get("spreadsheet_id")
+        keep_client_id = st.secrets.get("keep_client_id")
+        keep_client_secret = st.secrets.get("keep_client_secret")
+        keep_api_base_url = st.secrets.get("keep_api_base_url", "https://app.keep.co.il")
+
+        if not keep_client_id or not keep_client_secret:
+            result["failures"].append((0, "Keep.co.il credentials not set in Streamlit secrets"))
+            return result
+
+        sheets = GoogleSheetsClient(credentials_json, spreadsheet_id)
+        keep = KeepClient(keep_client_id, keep_client_secret, keep_api_base_url)
+        processor = InvoiceProcessor(sheets, keep)
+
+        # Mark all rows as ready in one batch write
+        sheets.worksheet.batch_update([
+            {"range": f"E{r}", "values": [["yes"]]}
+            for r in row_numbers
+        ])
+
+        # Read pending orders once and index by row number
+        pending = {o.sheet_row_number: o for o in sheets.get_pending_orders()}
+
+        n = len(row_numbers)
+        progress = st.progress(0.0)
+        status = st.empty()
+
+        for i, row_num in enumerate(row_numbers, 1):
+            status.write(f"Creating invoice {i}/{n} (row {row_num})…")
+            order = pending.get(row_num)
+            if not order:
+                result["failures"].append((row_num, "Could not read order data from sheet"))
+            elif processor._process_single_order(order, stop_on_validation_error=False):
+                result["successes"] += 1
+            else:
+                result["failures"].append((row_num, "Invoice failed — check Status column"))
+            progress.progress(i / n)
+
+        status.empty()
+        progress.empty()
+        st.cache_data.clear()
+        return result
+
+    except Exception as e:
+        result["failures"].append((0, f"Bulk error: {e}"))
+        return result
+
 def delete_order(row_number: int) -> bool:
     """Delete an order row from Google Sheets."""
     spreadsheet = get_spreadsheet()
@@ -313,6 +372,8 @@ if "editing_row" not in st.session_state:
     st.session_state.editing_row = None
 if "confirm_delete_row" not in st.session_state:
     st.session_state.confirm_delete_row = None
+if "selected_invoices" not in st.session_state:
+    st.session_state.selected_invoices = set()
 
 # Admin header with logout
 col_title, col_logout = st.columns([5, 1])
@@ -492,15 +553,16 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                         st.rerun()
 
                 if allow_invoice_trigger:
-                    if st.button("🧾 Create Invoice", key=f"btn_inv_{order['row']}", use_container_width=True):
-                        with st.spinner("Creating invoice..."):
-                            success, msg = create_invoice_now(order["row"])
-                        if success:
-                            st.success(msg)
-                            st.session_state.return_to_invoice_tab = True
-                            st.rerun()
-                        else:
-                            st.error(msg)
+                    is_selected = order["row"] in st.session_state.selected_invoices
+                    new_selected = st.checkbox(
+                        "🧾 Select for invoice",
+                        value=is_selected,
+                        key=f"sel_inv_{order['row']}",
+                    )
+                    if new_selected and not is_selected:
+                        st.session_state.selected_invoices.add(order["row"])
+                    elif not new_selected and is_selected:
+                        st.session_state.selected_invoices.discard(order["row"])
 
                 if order["invoice_url"]:
                     st.link_button("📄 View Invoice", order["invoice_url"], use_container_width=True)
@@ -593,7 +655,51 @@ with tab1:
 
 with tab2:
     st.subheader("Paid Orders Without Invoice")
-    st.caption("Payment received but no invoice has been created yet.")
+    st.caption("Payment received but no invoice has been created yet. Tick the orders you want to invoice, then click the button at the top.")
+
+    # Show results from the last bulk run (if any)
+    if "bulk_invoice_results" in st.session_state:
+        results = st.session_state.pop("bulk_invoice_results")
+        if results["successes"]:
+            st.success(f"✅ Created {results['successes']} invoice{'s' if results['successes'] != 1 else ''}")
+        if results["failures"]:
+            st.error(f"❌ {len(results['failures'])} failed:")
+            for row_num, msg in results["failures"]:
+                label = f"Row {row_num}" if row_num else "—"
+                st.write(f"- {label}: {msg}")
+
+    # Drop selections that are no longer in this tab's filter (e.g. orders already invoiced)
+    visible_rows = {o["row"] for o in paid_no_invoice}
+    st.session_state.selected_invoices &= visible_rows
+    n_selected = len(st.session_state.selected_invoices)
+
+    if paid_no_invoice:
+        bulk_c1, bulk_c2, bulk_c3 = st.columns([2, 1, 1])
+        with bulk_c1:
+            btn_label = (
+                f"🧾 Create {n_selected} invoice{'s' if n_selected != 1 else ''}"
+                if n_selected else "🧾 Create invoices (select orders first)"
+            )
+            if st.button(btn_label, type="primary", disabled=(n_selected == 0), use_container_width=True):
+                with st.spinner(f"Creating {n_selected} invoice{'s' if n_selected != 1 else ''}…"):
+                    selected_rows = sorted(st.session_state.selected_invoices)
+                    results = bulk_create_invoices(selected_rows)
+                st.session_state.bulk_invoice_results = results
+                st.session_state.selected_invoices -= set(selected_rows)
+                st.session_state.return_to_invoice_tab = True
+                st.rerun()
+        with bulk_c2:
+            if st.button(f"☑️ Select all ({len(paid_no_invoice)})", use_container_width=True):
+                st.session_state.selected_invoices |= visible_rows
+                st.session_state.return_to_invoice_tab = True
+                st.rerun()
+        with bulk_c3:
+            if st.button("Clear selection", use_container_width=True, disabled=(n_selected == 0)):
+                st.session_state.selected_invoices -= visible_rows
+                st.session_state.return_to_invoice_tab = True
+                st.rerun()
+        st.divider()
+
     render_order_table(paid_no_invoice, allow_invoice_trigger=True)
 
 with tab3:
