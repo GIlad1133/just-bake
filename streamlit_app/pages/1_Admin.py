@@ -591,64 +591,6 @@ with tab3:
     if not pickup_queue and not recently_picked:
         st.success("✅ All caught up — nothing pending pickup!")
     else:
-        def _sum_qty(orders, *prefixes):
-            return sum(
-                o["products"].get(f"{p}_qty", 0)
-                for o in orders for p in prefixes
-            )
-
-        # ── Inventory summary (today + upcoming only; overdue should be made already) ──
-        prep_orders = today_pickups + upcoming_pickups
-        if prep_orders:
-            st.markdown("#### 📦 What to prepare")
-            from itertools import groupby
-            for day_str, day_orders in groupby(prep_orders, key=lambda o: o["date"]):
-                day_orders = list(day_orders)
-
-                dk_n  = _sum_qty(day_orders, "neapolitan_kit")
-                dk_s  = _sum_qty(day_orders, "spelt_kit")
-                dk_gf = _sum_qty(day_orders, "gluten_free_kit")
-                dk_total = dk_n + dk_s + dk_gf
-
-                dd_n  = _sum_qty(day_orders, "neapolitan_dough")  + dk_n  * 5
-                dd_s  = _sum_qty(day_orders, "spelt_dough")       + dk_s  * 5
-                dd_gf = _sum_qty(day_orders, "gluten_free_dough") + dk_gf * 5
-                d_sauce_w = _sum_qty(day_orders, "white_sauce")
-                d_sauce_r = _sum_qty(day_orders, "red_sauce")
-                d_sauce   = d_sauce_w + d_sauce_r + dk_total
-                d_cheese  = _sum_qty(day_orders, "cheese") + dk_total * 5
-                d_sandwiches = _sum_qty(day_orders, "pizza_sandwich")
-
-                with st.container(border=True):
-                    st.markdown(f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
-                    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
-                    with r1c1:
-                        st.markdown("**ערכות / Kits**")
-                        if dk_n:  st.write(f"נפוליטנית: **{dk_n}**")
-                        if dk_s:  st.write(f"כוסמין: **{dk_s}**")
-                        if dk_gf: st.write(f"ללא גלוטן: **{dk_gf}**")
-                        if not dk_total: st.caption("—")
-                    with r1c2:
-                        st.markdown("**בצק / Dough**")
-                        if dd_n:  st.write(f"נפוליטני: **{dd_n}**")
-                        if dd_s:  st.write(f"כוסמין: **{dd_s}**")
-                        if dd_gf: st.write(f"ללא גלוטן: **{dd_gf}**")
-                        if not (dd_n or dd_s or dd_gf): st.caption("—")
-                    with r1c3:
-                        st.markdown("**רטבים וגבינה**")
-                        st.write(f"רוטב: **{d_sauce}**")
-                        if d_sauce_w or d_sauce_r:
-                            st.caption(f"לבן {d_sauce_w} · אדום {d_sauce_r} · ערכות {dk_total}")
-                        st.write(f"גבינה: **{d_cheese}**")
-                    with r1c4:
-                        st.markdown("**סדנאות פיצה**")
-                        if d_sandwiches:
-                            st.write(f"סדנאות: **{d_sandwiches}**")
-                        else:
-                            st.caption("—")
-
-            st.divider()
-
         # ── Order card renderer (shared across all sections) ──────────────
         def _render_order_card(order, banner_color=None, banner_text=None):
             paid = _is_paid(order["payment_method"])
