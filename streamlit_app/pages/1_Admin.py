@@ -197,18 +197,51 @@ def update_collection_date(row_number: int, new_date) -> bool:
         return False
 
 def update_pickup_status(row_number: int, picked_up: bool) -> bool:
-    """Mark/unmark an order as picked up (Column AG = column 33)."""
+    """Mark/unmark an order as picked up (Column AG = column 33).
+
+    Writes 'yes' / 'no' explicitly so backfill can distinguish manual
+    unmarks from never-touched cells.
+    """
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
         return False
     try:
         worksheet = spreadsheet.get_worksheet(0)
-        worksheet.update_cell(row_number, 33, "yes" if picked_up else "")
+        worksheet.update_cell(row_number, 33, "yes" if picked_up else "no")
         st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Failed to update pickup status: {e}")
         return False
+
+def backfill_picked_up_from_invoices() -> int:
+    """Mark orders with an invoice URL as picked up, when AG is still blank.
+
+    Idempotent: skips rows already marked yes/no. Returns count updated.
+    """
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return 0
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        rows = worksheet.get_all_values()
+        if len(rows) <= 1:
+            return 0
+
+        updates = []
+        for i, row in enumerate(rows[1:], start=2):
+            has_invoice = len(row) > 5 and row[5].strip()
+            ag_value = row[32].strip() if len(row) > 32 else ""
+            if has_invoice and not ag_value:
+                updates.append({"range": f"AG{i}", "values": [["yes"]]})
+
+        if updates:
+            worksheet.batch_update(updates)
+            st.cache_data.clear()
+        return len(updates)
+    except Exception as e:
+        st.error(f"Backfill failed: {e}")
+        return 0
 
 def create_invoice_now(row_number: int) -> tuple:
     """Create invoice immediately via Keep.co.il API."""
@@ -315,6 +348,21 @@ paid_no_invoice = [
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
 
 show_picked_up = st.sidebar.checkbox("Show recently picked-up orders", value=False)
+
+with st.sidebar.expander("⚙️ Tools"):
+    st.caption(
+        "**Backfill picked-up from invoices**\n\n"
+        "Marks every order that already has an invoice URL as picked up "
+        "(only touches rows you haven't explicitly marked yet). "
+        "Safe to run multiple times."
+    )
+    if st.button("🪄 Run backfill", use_container_width=True):
+        count = backfill_picked_up_from_invoices()
+        if count > 0:
+            st.success(f"✅ Marked {count} orders as picked up")
+            st.rerun()
+        else:
+            st.info("Nothing to backfill — all invoiced orders already handled.")
 
 today_start = datetime.combine(date.today(), datetime.min.time())
 tomorrow_start = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
