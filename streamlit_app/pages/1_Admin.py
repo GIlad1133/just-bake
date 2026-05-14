@@ -24,6 +24,20 @@ def _normalize_dmy(date_str: str) -> str:
         except ValueError:
             continue
     return s
+
+
+# Session-level cache for the orders list. Every widget change in the admin
+# triggers a full script rerun; without caching, every rerun does a fresh
+# get_all_values() Sheets read. Cache TTL is short and is invalidated on every
+# write, so the admin always sees their own changes immediately.
+ORDERS_CACHE_TTL_SEC = 30
+
+def _invalidate_orders():
+    """Drop the cached orders so the next load_all_orders re-fetches from Sheets."""
+    cd = st.cache_data  # aliased so a project-wide search/replace doesn't recurse
+    cd.clear()
+    st.session_state.pop("_orders_cache", None)
+    st.session_state.pop("_orders_cache_at", None)
 import os
 import sys
 from dotenv import load_dotenv
@@ -76,7 +90,13 @@ def _safe_int(row, idx):
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 
 def load_all_orders():
-    """Load all orders from Google Sheets."""
+    """Load all orders from Google Sheets, session-cached for ORDERS_CACHE_TTL_SEC."""
+    cache_at = st.session_state.get("_orders_cache_at")
+    if cache_at and (datetime.now() - cache_at).total_seconds() < ORDERS_CACHE_TTL_SEC:
+        cached = st.session_state.get("_orders_cache")
+        if cached is not None:
+            return cached
+
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
         return []
@@ -128,6 +148,8 @@ def load_all_orders():
                 "bake_date": _normalize_dmy(row[34]) if len(row) > 34 and row[34] else "",  # AI: DD/MM/YYYY or empty
                 "products": products,
             })
+        st.session_state["_orders_cache"] = orders
+        st.session_state["_orders_cache_at"] = datetime.now()
         return orders
     except Exception as e:
         st.error(f"Failed to load orders: {e}")
@@ -143,7 +165,7 @@ def update_payment_method(row_number: int, new_method: str) -> bool:
     try:
         worksheet = spreadsheet.get_worksheet(0)
         worksheet.update_cell(row_number, 4, new_method)  # Column D
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update payment: {e}")
@@ -196,7 +218,7 @@ def update_order(row_number: int, customer: str, phone: str, order_date, payment
             worksheet.update_cell(row_number, product["qty_col"] + 1, products.get(f"{prefix}_qty") or 0)
             worksheet.update_cell(row_number, product["price_col"] + 1, products.get(f"{prefix}_price") or 0.0)
 
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update order: {e}")
@@ -210,7 +232,7 @@ def update_collection_date(row_number: int, new_date) -> bool:
     try:
         worksheet = spreadsheet.get_worksheet(0)
         worksheet.update_cell(row_number, 1, new_date.strftime("%d/%m/%Y"))  # Column A
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update date: {e}")
@@ -228,7 +250,7 @@ def update_pickup_status(row_number: int, picked_up: bool) -> bool:
     try:
         worksheet = spreadsheet.get_worksheet(0)
         worksheet.update_cell(row_number, 33, "yes" if picked_up else "no")
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update pickup status: {e}")
@@ -245,7 +267,7 @@ def update_dough_type(row_number: int, dough_type: str) -> bool:
     try:
         worksheet = spreadsheet.get_worksheet(0)
         worksheet.update_cell(row_number, 34, dough_type)
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update dough type: {e}")
@@ -255,20 +277,20 @@ def update_bake_date(row_number: int, bake_date_str: str) -> bool:
     """Set when the customer plans to bake (Column AI = column 35).
 
     For fresh Neapolitan, this drives fermentation timing. Empty string clears.
-    Writes with value_input_option='RAW' so Sheets stores the literal text
-    instead of parsing it as a date and re-displaying in a different locale.
+    Uses batch_update with value_input_option='RAW' (the same pattern used by
+    backfill_picked_up and bulk_create_invoices) so Sheets stores the literal
+    text instead of auto-formatting it as a date.
     """
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
         return False
     try:
         worksheet = spreadsheet.get_worksheet(0)
-        worksheet.update(
-            range_name=f"AI{row_number}",
-            values=[[bake_date_str or ""]],
+        worksheet.batch_update(
+            [{"range": f"AI{row_number}", "values": [[bake_date_str or ""]]}],
             value_input_option="RAW",
         )
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to update bake date: {e}")
@@ -308,7 +330,7 @@ def backfill_picked_up() -> int:
 
         if updates:
             worksheet.batch_update(updates)
-            st.cache_data.clear()
+            _invalidate_orders()
         return len(updates)
     except Exception as e:
         st.error(f"Backfill failed: {e}")
@@ -341,7 +363,7 @@ def create_invoice_now(row_number: int) -> tuple:
         processor = InvoiceProcessor(sheets, keep)
         success = processor._process_single_order(order, stop_on_validation_error=False)
 
-        st.cache_data.clear()
+        _invalidate_orders()
         if success:
             return True, "✅ Invoice created!"
         else:
@@ -402,7 +424,7 @@ def bulk_create_invoices(row_numbers: list) -> dict:
 
         status.empty()
         progress.empty()
-        st.cache_data.clear()
+        _invalidate_orders()
         return result
 
     except Exception as e:
@@ -417,7 +439,7 @@ def delete_order(row_number: int) -> bool:
     try:
         worksheet = spreadsheet.get_worksheet(0)
         worksheet.delete_rows(row_number)
-        st.cache_data.clear()
+        _invalidate_orders()
         return True
     except Exception as e:
         st.error(f"Failed to delete order: {e}")
