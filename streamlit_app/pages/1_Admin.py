@@ -1025,6 +1025,12 @@ with tab3:
             for o in neapolitan_orders:
                 key = _effective_dough_date(o)
                 by_date.setdefault(key, []).append(o)
+            def _name_list(orders, predicate):
+                return ", ".join(
+                    f"{o['customer']} ({_neapolitan_count(o)})"
+                    for o in orders if predicate(o)
+                )
+
             # Sort dates chronologically
             for day_str in sorted(by_date.keys(), key=_parse_date):
                 day_orders = by_date[day_str]
@@ -1032,19 +1038,25 @@ with tab3:
                 frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
                 unspecified = sum(_neapolitan_count(o) for o in day_orders if not o["dough_type"])
                 with st.container(border=True):
-                    cols = st.columns([2, 1, 1, 1])
-                    with cols[0]:
-                        st.markdown(f"**📅 {day_str}**")
-                        st.caption(f"{len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
-                    with cols[1]:
+                    st.markdown(
+                        f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}"
+                    )
+                    m1, m2, m3 = st.columns(3)
+                    with m1:
                         st.metric("🌿 Fresh", fresh)
-                    with cols[2]:
+                    with m2:
                         st.metric("❄️ Frozen", frozen)
-                    with cols[3]:
+                    with m3:
                         if unspecified:
                             st.metric("❓ Unspecified", unspecified)
                         else:
                             st.caption("✅ All tagged")
+                    if fresh:
+                        st.caption(f"🌿 {_name_list(day_orders, lambda o: o['dough_type'] == 'fresh')}")
+                    if frozen:
+                        st.caption(f"❄️ {_name_list(day_orders, lambda o: o['dough_type'] == 'frozen')}")
+                    if unspecified:
+                        st.caption(f"❓ {_name_list(day_orders, lambda o: not o['dough_type'])}")
             st.divider()
 
         # ── Overdue section (most urgent — safety net for stale dates) ────
