@@ -106,6 +106,7 @@ def load_all_orders():
                 "status": row[27] if len(row) > 27 else "",  # AB
                 "phone": row[28] if len(row) > 28 else "",   # AC
                 "picked_up": (row[32].strip().lower() == "yes") if len(row) > 32 and row[32] else False,  # AG
+                "dough_type": (row[33].strip().lower() if len(row) > 33 and row[33] else ""),  # AH: "fresh" / "frozen" / ""
                 "products": products,
             })
         return orders
@@ -212,6 +213,23 @@ def update_pickup_status(row_number: int, picked_up: bool) -> bool:
         return True
     except Exception as e:
         st.error(f"Failed to update pickup status: {e}")
+        return False
+
+def update_dough_type(row_number: int, dough_type: str) -> bool:
+    """Tag a Neapolitan order as fresh/frozen (Column AH = column 34).
+
+    Pass 'fresh', 'frozen', or '' to clear.
+    """
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return False
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        worksheet.update_cell(row_number, 34, dough_type)
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to update dough type: {e}")
         return False
 
 def backfill_picked_up() -> int:
@@ -411,6 +429,14 @@ def _is_paid(payment_method: str) -> bool:
 def _is_cash(payment_method: str) -> bool:
     return (payment_method or "").strip() in CASH_VALUES
 
+def _neapolitan_count(order) -> int:
+    """Total Neapolitan dough balls in an order: kit*5 + standalone."""
+    p = order["products"]
+    return (p.get("neapolitan_kit_qty", 0) or 0) * 5 + (p.get("neapolitan_dough_qty", 0) or 0)
+
+def _has_neapolitan(order) -> bool:
+    return _neapolitan_count(order) > 0
+
 not_paid = sorted(
     [o for o in all_orders if not _is_paid(o["payment_method"])],
     key=lambda o: _parse_date(o["date"])
@@ -499,6 +525,11 @@ def _pickup_rerun():
     """Set tab-restore flag, then rerun. Use inside any pickup-queue action."""
     st.session_state.return_to_pickup_tab = True
     st.rerun()
+
+def _pickup_on_change():
+    """Widget on_change callback — sets the tab-restore flag so the implicit
+    rerun from a value change doesn't bounce the user back to Not Paid."""
+    st.session_state.return_to_pickup_tab = True
 
 pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)})"
 if overdue_orders:
@@ -639,10 +670,34 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                     (edit_products.get(f"{p['column_prefix']}_price") or 0.0)
                     for p in PRODUCTS
                 )
+
+                # Dough type (only relevant if order has Neapolitan in the new edit)
+                has_nean_edit = (
+                    (edit_products.get("neapolitan_kit_qty") or 0) > 0
+                    or (edit_products.get("neapolitan_dough_qty") or 0) > 0
+                )
+                edit_dough_type = order["dough_type"]
+                if has_nean_edit:
+                    dough_options = ["", "fresh", "frozen"]
+                    try:
+                        dt_idx = dough_options.index(order["dough_type"])
+                    except ValueError:
+                        dt_idx = 0
+                    edit_dough_type = st.radio(
+                        "🍞 Neapolitan dough type",
+                        options=dough_options,
+                        index=dt_idx,
+                        format_func=lambda x: {"": "❓ Not specified", "fresh": "🌿 Fresh", "frozen": "❄️ Frozen"}.get(x, x),
+                        horizontal=True,
+                        key=f"edit_dough_{order['row']}",
+                    )
+
                 st.markdown(f"**New Total: ₪{new_total:.2f}**")
 
                 if st.button("💾 Save Changes", key=f"save_{order['row']}", type="primary"):
                     if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
+                        if has_nean_edit and edit_dough_type != order["dough_type"]:
+                            update_dough_type(order["row"], edit_dough_type)
                         st.success("✅ Order updated!")
                         st.session_state.editing_row = None
                         st.rerun()
@@ -756,6 +811,7 @@ with tab3:
                         value=current_coll_date,
                         key=f"coll_date_pq_{order['row']}",
                         label_visibility="collapsed",
+                        on_change=_pickup_on_change,
                     )
                     if new_coll_date != current_coll_date:
                         if st.button("📅 Update Date", key=f"btn_coll_pq_{order['row']}", use_container_width=True):
@@ -787,21 +843,42 @@ with tab3:
                             st.session_state.confirm_delete_row = order["row"]
                             _pickup_rerun()
 
+                # Dough type footer (Neapolitan orders only)
+                if _has_neapolitan(order):
+                    n_count = _neapolitan_count(order)
+                    ball_label = f"{n_count} ball{'s' if n_count != 1 else ''}"
+                    if order["dough_type"] == "fresh":
+                        st.markdown(f"🌿 **Fresh** Neapolitan dough · {ball_label}")
+                    elif order["dough_type"] == "frozen":
+                        st.markdown(f"❄️ **Frozen** Neapolitan dough · {ball_label}")
+                    else:
+                        dt_c1, dt_c2, dt_c3 = st.columns([2, 1, 1])
+                        with dt_c1:
+                            st.caption(f"❓ Neapolitan dough type not set · {ball_label}")
+                        with dt_c2:
+                            if st.button("🌿 Fresh", key=f"tag_fresh_pq_{order['row']}", use_container_width=True):
+                                if update_dough_type(order["row"], "fresh"):
+                                    _pickup_rerun()
+                        with dt_c3:
+                            if st.button("❄️ Frozen", key=f"tag_frozen_pq_{order['row']}", use_container_width=True):
+                                if update_dough_type(order["row"], "frozen"):
+                                    _pickup_rerun()
+
                 # Inline edit form
                 if st.session_state.editing_row == order["row"]:
                     st.divider()
                     st.markdown("#### ✏️ Edit Order")
                     ec1, ec2 = st.columns(2)
                     with ec1:
-                        edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_pq_{order['row']}")
+                        edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_pq_{order['row']}", on_change=_pickup_on_change)
                         try:
                             d, m, y = order["date"].split("/")
                             parsed_date = date(int(y), int(m), int(d))
                         except Exception:
                             parsed_date = date.today()
-                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_pq_{order['row']}")
+                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_pq_{order['row']}", on_change=_pickup_on_change)
                     with ec2:
-                        edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_pq_{order['row']}")
+                        edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_pq_{order['row']}", on_change=_pickup_on_change)
                         method_keys = list(PAYMENT_METHODS.keys())
                         method_values = list(PAYMENT_METHODS.values())
                         current_idx = method_values.index(order["payment_method"]) if order["payment_method"] in method_values else 0
@@ -810,7 +887,8 @@ with tab3:
                             options=method_keys,
                             index=current_idx,
                             format_func=lambda x: PAYMENT_METHODS[x],
-                            key=f"edit_payment_pq_{order['row']}"
+                            key=f"edit_payment_pq_{order['row']}",
+                            on_change=_pickup_on_change,
                         )
 
                     st.markdown("**Products**")
@@ -825,12 +903,14 @@ with tab3:
                         with pc2:
                             edit_products[f"{prefix}_qty"] = st.number_input(
                                 "Qty", min_value=0, value=current_qty, step=1,
-                                key=f"edit_pq_{prefix}_qty_{order['row']}", label_visibility="collapsed"
+                                key=f"edit_pq_{prefix}_qty_{order['row']}", label_visibility="collapsed",
+                                on_change=_pickup_on_change,
                             )
                         with pc3:
                             edit_products[f"{prefix}_price"] = st.number_input(
                                 "Price", min_value=0.0, value=current_price, step=0.5, format="%.2f",
-                                key=f"edit_pq_{prefix}_price_{order['row']}", label_visibility="collapsed"
+                                key=f"edit_pq_{prefix}_price_{order['row']}", label_visibility="collapsed",
+                                on_change=_pickup_on_change,
                             )
 
                     new_total = sum(
@@ -838,13 +918,63 @@ with tab3:
                         (edit_products.get(f"{p['column_prefix']}_price") or 0.0)
                         for p in PRODUCTS
                     )
+                    # Dough type (only relevant if order has Neapolitan in the new edit)
+                    has_nean_edit = (
+                        (edit_products.get("neapolitan_kit_qty") or 0) > 0
+                        or (edit_products.get("neapolitan_dough_qty") or 0) > 0
+                    )
+                    edit_dough_type = order["dough_type"]
+                    if has_nean_edit:
+                        dough_options = ["", "fresh", "frozen"]
+                        try:
+                            dt_idx = dough_options.index(order["dough_type"])
+                        except ValueError:
+                            dt_idx = 0
+                        edit_dough_type = st.radio(
+                            "🍞 Neapolitan dough type",
+                            options=dough_options,
+                            index=dt_idx,
+                            format_func=lambda x: {"": "❓ Not specified", "fresh": "🌿 Fresh", "frozen": "❄️ Frozen"}.get(x, x),
+                            horizontal=True,
+                            key=f"edit_dough_pq_{order['row']}",
+                            on_change=_pickup_on_change,
+                        )
+
                     st.markdown(f"**New Total: ₪{new_total:.2f}**")
                     if st.button("💾 Save Changes", key=f"save_pq_{order['row']}", type="primary"):
                         if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
+                            if has_nean_edit and edit_dough_type != order["dough_type"]:
+                                update_dough_type(order["row"], edit_dough_type)
                             st.success("✅ Order updated!")
                             st.session_state.editing_row = None
                             _pickup_rerun()
                     st.divider()
+
+        # ── Neapolitan dough prep (fresh vs frozen per day) ───────────────
+        neapolitan_orders = [o for o in pickup_queue if _has_neapolitan(o)]
+        if neapolitan_orders:
+            st.markdown("#### 🍞 Neapolitan Dough Prep")
+            from itertools import groupby as _gb
+            for day_str, day_orders in _gb(neapolitan_orders, key=lambda o: o["date"]):
+                day_orders = list(day_orders)
+                fresh = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "fresh")
+                frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
+                unspecified = sum(_neapolitan_count(o) for o in day_orders if not o["dough_type"])
+                with st.container(border=True):
+                    cols = st.columns([2, 1, 1, 1])
+                    with cols[0]:
+                        st.markdown(f"**📅 {day_str}**")
+                        st.caption(f"{len(day_orders)} order{'s' if len(day_orders) != 1 else ''}")
+                    with cols[1]:
+                        st.metric("🌿 Fresh", fresh)
+                    with cols[2]:
+                        st.metric("❄️ Frozen", frozen)
+                    with cols[3]:
+                        if unspecified:
+                            st.metric("❓ Unspecified", unspecified)
+                        else:
+                            st.caption("✅ All tagged")
+            st.divider()
 
         # ── Overdue section (most urgent — safety net for stale dates) ────
         if overdue_orders:

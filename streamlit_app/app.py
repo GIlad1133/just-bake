@@ -101,7 +101,7 @@ def calculate_total(product_data):
         total += qty * price
     return total
 
-def submit_order(customer_name, order_date, payment_method, product_data, phone="", business_id=""):
+def submit_order(customer_name, order_date, payment_method, product_data, phone="", business_id="", dough_type=""):
     spreadsheet = get_spreadsheet()
     if spreadsheet is None:
         return False, "Failed to connect to Google Sheets"
@@ -139,6 +139,10 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
             prefix = product["column_prefix"]
             row_data.append(product_data.get(f"{prefix}_qty") or 0)
             row_data.append(product_data.get(f"{prefix}_price") or 0.0)
+
+        # AG: picked_up (always empty for new orders) · AH: dough_type
+        row_data.append("")
+        row_data.append(dough_type or "")
         worksheet.append_row(row_data)
         return True, row_id
     except Exception as e:
@@ -260,6 +264,21 @@ st.divider()
 total = calculate_total(product_data)
 st.markdown(f"### Total: ₪{total:.2f}")
 
+# Neapolitan dough type — only relevant when the order contains Neapolitan products
+has_neapolitan_in_form = (
+    (product_data.get("neapolitan_kit_qty") or 0) > 0
+    or (product_data.get("neapolitan_dough_qty") or 0) > 0
+)
+dough_type_value = ""
+if has_neapolitan_in_form:
+    dough_type_value = st.radio(
+        "🍞 Neapolitan dough — fresh or frozen?",
+        options=["", "fresh", "frozen"],
+        format_func=lambda x: {"": "❓ Not specified", "fresh": "🌿 Fresh", "frozen": "❄️ Frozen"}.get(x, x),
+        horizontal=True,
+        key=f"v{v}_dough_type",
+    )
+
 st.divider()
 
 # ─── Submit / Clear ───────────────────────────────────────────────────────────
@@ -285,7 +304,7 @@ with col_submit:
             with st.spinner("Submitting..."):
                 success, result = submit_order(
                     customer_name, order_date, payment_method,
-                    product_data, phone, business_id
+                    product_data, phone, business_id, dough_type_value
                 )
             if success:
                 st.success("✅ Order submitted!")
