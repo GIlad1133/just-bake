@@ -6,6 +6,24 @@ Secure admin interface for managing orders, payments, and invoices.
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
+
+
+def _normalize_dmy(date_str: str) -> str:
+    """Force any date string to DD/MM/YYYY.
+
+    Google Sheets sometimes re-displays dates in ISO when the column has been
+    auto-formatted as a date (happens to a brand-new column the first time we
+    write a parseable date). Normalize on read so comparisons and grouping work.
+    """
+    if not date_str:
+        return ""
+    s = str(date_str).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return s
 import os
 import sys
 from dotenv import load_dotenv
@@ -107,7 +125,7 @@ def load_all_orders():
                 "phone": row[28] if len(row) > 28 else "",   # AC
                 "picked_up": (row[32].strip().lower() == "yes") if len(row) > 32 and row[32] else False,  # AG
                 "dough_type": (row[33].strip().lower() if len(row) > 33 and row[33] else ""),  # AH: "fresh" / "frozen" / ""
-                "bake_date": (row[34].strip() if len(row) > 34 and row[34] else ""),  # AI: DD/MM/YYYY or empty
+                "bake_date": _normalize_dmy(row[34]) if len(row) > 34 and row[34] else "",  # AI: DD/MM/YYYY or empty
                 "products": products,
             })
         return orders
@@ -237,13 +255,19 @@ def update_bake_date(row_number: int, bake_date_str: str) -> bool:
     """Set when the customer plans to bake (Column AI = column 35).
 
     For fresh Neapolitan, this drives fermentation timing. Empty string clears.
+    Writes with value_input_option='RAW' so Sheets stores the literal text
+    instead of parsing it as a date and re-displaying in a different locale.
     """
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
         return False
     try:
         worksheet = spreadsheet.get_worksheet(0)
-        worksheet.update_cell(row_number, 35, bake_date_str or "")
+        worksheet.update(
+            range_name=f"AI{row_number}",
+            values=[[bake_date_str or ""]],
+            value_input_option="RAW",
+        )
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -432,10 +456,15 @@ if not all_orders:
     st.stop()
 
 def _parse_date(date_str):
-    try:
-        return datetime.strptime(date_str, "%d/%m/%Y")
-    except Exception:
+    if not date_str:
         return datetime.min
+    s = str(date_str).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return datetime.min
 
 UNPAID_PAYMENT_VALUES = {"לא שולם", "", "-"}
 CASH_VALUES = ("מזומן", "cash", "Cash")
