@@ -892,7 +892,13 @@ with tab3:
 
                 with col1:
                     st.markdown(f"**{order['customer']}**")
-                    st.caption(f"📅 {order['date']}  ·  📞 {order['phone'] or '—'}")
+                    bake = order.get("bake_date")
+                    if bake and bake != order["date"]:
+                        st.caption(
+                            f"📦 picks up **{order['date']}**  ·  🍞 bakes **{bake}**  ·  📞 {order['phone'] or '—'}"
+                        )
+                    else:
+                        st.caption(f"📅 {order['date']}  ·  📞 {order['phone'] or '—'}")
 
                 with col2:
                     st.metric("Amount", f"₪{order['amount']}")
@@ -1101,6 +1107,14 @@ with tab3:
                     for o in orders if predicate(o)
                 )
 
+            def _name_list_with_pickup(orders, predicate):
+                # Fresh orders: customer + balls + pickup date so you know when
+                # each one is *collecting* (vs the bake-date section header).
+                return ", ".join(
+                    f"{o['customer']} ({_neapolitan_count(o)} · picks up {o['date']})"
+                    for o in orders if predicate(o)
+                )
+
             # Sort dates chronologically
             for day_str in sorted(by_date.keys(), key=_parse_date):
                 day_orders = by_date[day_str]
@@ -1122,7 +1136,7 @@ with tab3:
                         else:
                             st.caption("✅ All tagged")
                     if fresh:
-                        st.caption(f"🌿 {_name_list(day_orders, lambda o: o['dough_type'] == 'fresh')}")
+                        st.caption(f"🌿 {_name_list_with_pickup(day_orders, lambda o: o['dough_type'] == 'fresh')}")
                     if frozen:
                         st.caption(f"❄️ {_name_list(day_orders, lambda o: o['dough_type'] == 'frozen')}")
                     if unspecified:
