@@ -107,6 +107,7 @@ def load_all_orders():
                 "phone": row[28] if len(row) > 28 else "",   # AC
                 "picked_up": (row[32].strip().lower() == "yes") if len(row) > 32 and row[32] else False,  # AG
                 "dough_type": (row[33].strip().lower() if len(row) > 33 and row[33] else ""),  # AH: "fresh" / "frozen" / ""
+                "bake_date": (row[34].strip() if len(row) > 34 and row[34] else ""),  # AI: DD/MM/YYYY or empty
                 "products": products,
             })
         return orders
@@ -230,6 +231,23 @@ def update_dough_type(row_number: int, dough_type: str) -> bool:
         return True
     except Exception as e:
         st.error(f"Failed to update dough type: {e}")
+        return False
+
+def update_bake_date(row_number: int, bake_date_str: str) -> bool:
+    """Set when the customer plans to bake (Column AI = column 35).
+
+    For fresh Neapolitan, this drives fermentation timing. Empty string clears.
+    """
+    spreadsheet = get_spreadsheet()
+    if not spreadsheet:
+        return False
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        worksheet.update_cell(row_number, 35, bake_date_str or "")
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Failed to update bake date: {e}")
         return False
 
 def backfill_picked_up() -> int:
@@ -436,6 +454,16 @@ def _neapolitan_count(order) -> int:
 
 def _has_neapolitan(order) -> bool:
     return _neapolitan_count(order) > 0
+
+def _effective_dough_date(order) -> str:
+    """The date by which the dough must be READY.
+
+    Fresh orders: bake date (drives fermentation start time).
+    Frozen / unspecified: pickup date (when to thaw or hand over).
+    """
+    if order.get("dough_type") == "fresh" and order.get("bake_date"):
+        return order["bake_date"]
+    return order["date"]
 
 not_paid = sorted(
     [o for o in all_orders if not _is_paid(o["payment_method"])],
@@ -677,6 +705,7 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                     or (edit_products.get("neapolitan_dough_qty") or 0) > 0
                 )
                 edit_dough_type = order["dough_type"]
+                edit_bake_date_str = order.get("bake_date") or ""
                 if has_nean_edit:
                     dough_options = ["", "fresh", "frozen"]
                     try:
@@ -692,12 +721,26 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                         key=f"edit_dough_{order['row']}",
                     )
 
+                    try:
+                        d, m, y = (order.get("bake_date") or order["date"]).split("/")
+                        current_bake_date = date(int(y), int(m), int(d))
+                    except Exception:
+                        current_bake_date = edit_date if isinstance(edit_date, date) else date.today()
+                    edit_bake_date = st.date_input(
+                        "🍞 Bake date (when customer plans to bake)",
+                        value=current_bake_date,
+                        key=f"edit_bake_{order['row']}",
+                    )
+                    edit_bake_date_str = edit_bake_date.strftime("%d/%m/%Y")
+
                 st.markdown(f"**New Total: ₪{new_total:.2f}**")
 
                 if st.button("💾 Save Changes", key=f"save_{order['row']}", type="primary"):
                     if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
                         if has_nean_edit and edit_dough_type != order["dough_type"]:
                             update_dough_type(order["row"], edit_dough_type)
+                        if has_nean_edit and edit_bake_date_str != (order.get("bake_date") or ""):
+                            update_bake_date(order["row"], edit_bake_date_str)
                         st.success("✅ Order updated!")
                         st.session_state.editing_row = None
                         st.rerun()
@@ -847,10 +890,15 @@ with tab3:
                 if _has_neapolitan(order):
                     n_count = _neapolitan_count(order)
                     ball_label = f"{n_count} ball{'s' if n_count != 1 else ''}"
+                    bake_suffix = (
+                        f" · bake {order['bake_date']}"
+                        if order.get("bake_date") and order["bake_date"] != order["date"]
+                        else ""
+                    )
                     if order["dough_type"] == "fresh":
-                        st.markdown(f"🌿 **Fresh** Neapolitan dough · {ball_label}")
+                        st.markdown(f"🌿 **Fresh** Neapolitan dough · {ball_label}{bake_suffix}")
                     elif order["dough_type"] == "frozen":
-                        st.markdown(f"❄️ **Frozen** Neapolitan dough · {ball_label}")
+                        st.markdown(f"❄️ **Frozen** Neapolitan dough · {ball_label}{bake_suffix}")
                     else:
                         dt_c1, dt_c2, dt_c3 = st.columns([2, 1, 1])
                         with dt_c1:
@@ -924,6 +972,7 @@ with tab3:
                         or (edit_products.get("neapolitan_dough_qty") or 0) > 0
                     )
                     edit_dough_type = order["dough_type"]
+                    edit_bake_date_str = order.get("bake_date") or ""
                     if has_nean_edit:
                         dough_options = ["", "fresh", "frozen"]
                         try:
@@ -940,23 +989,45 @@ with tab3:
                             on_change=_pickup_on_change,
                         )
 
+                        # Bake date — defaults to pickup date if not set
+                        try:
+                            d, m, y = (order.get("bake_date") or order["date"]).split("/")
+                            current_bake_date = date(int(y), int(m), int(d))
+                        except Exception:
+                            current_bake_date = edit_date if isinstance(edit_date, date) else date.today()
+                        edit_bake_date = st.date_input(
+                            "🍞 Bake date (when customer plans to bake)",
+                            value=current_bake_date,
+                            key=f"edit_bake_pq_{order['row']}",
+                            on_change=_pickup_on_change,
+                        )
+                        edit_bake_date_str = edit_bake_date.strftime("%d/%m/%Y")
+
                     st.markdown(f"**New Total: ₪{new_total:.2f}**")
                     if st.button("💾 Save Changes", key=f"save_pq_{order['row']}", type="primary"):
                         if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
                             if has_nean_edit and edit_dough_type != order["dough_type"]:
                                 update_dough_type(order["row"], edit_dough_type)
+                            if has_nean_edit and edit_bake_date_str != (order.get("bake_date") or ""):
+                                update_bake_date(order["row"], edit_bake_date_str)
                             st.success("✅ Order updated!")
                             st.session_state.editing_row = None
                             _pickup_rerun()
                     st.divider()
 
-        # ── Neapolitan dough prep (fresh vs frozen per day) ───────────────
+        # ── Neapolitan dough prep (fresh by BAKE date, frozen by PICKUP date) ──
         neapolitan_orders = [o for o in pickup_queue if _has_neapolitan(o)]
         if neapolitan_orders:
             st.markdown("#### 🍞 Neapolitan Dough Prep")
-            from itertools import groupby as _gb
-            for day_str, day_orders in _gb(neapolitan_orders, key=lambda o: o["date"]):
-                day_orders = list(day_orders)
+            st.caption("Fresh grouped by bake date · Frozen / unspecified grouped by pickup date. Tells you what needs to be **ready** by each date.")
+            # Index orders by their effective prep date
+            by_date = {}
+            for o in neapolitan_orders:
+                key = _effective_dough_date(o)
+                by_date.setdefault(key, []).append(o)
+            # Sort dates chronologically
+            for day_str in sorted(by_date.keys(), key=_parse_date):
+                day_orders = by_date[day_str]
                 fresh = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "fresh")
                 frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
                 unspecified = sum(_neapolitan_count(o) for o in day_orders if not o["dough_type"])
