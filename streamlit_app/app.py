@@ -144,7 +144,10 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
         row_data.append("")
         row_data.append(dough_type or "")
         row_data.append(bake_date or "")
-        worksheet.append_row(row_data)
+        # Ensure column AI exists before append_row writes to it
+        if worksheet.col_count < 35:
+            worksheet.add_cols(35 - worksheet.col_count)
+        worksheet.append_row(row_data, value_input_option="RAW")
         return True, row_id
     except Exception as e:
         return False, str(e)

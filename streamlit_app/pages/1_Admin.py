@@ -273,19 +273,38 @@ def update_dough_type(row_number: int, dough_type: str) -> bool:
         st.error(f"Failed to update dough type: {e}")
         return False
 
+def _ensure_bake_date_column(worksheet) -> None:
+    """Make sure column AI exists and is text-formatted before we write to it.
+
+    Runs once per session. Adds columns if the sheet is narrower than AI (35),
+    then locks the AI column to plain-text format so Sheets stops re-interpreting
+    DD/MM/YYYY writes as date serials.
+    """
+    if st.session_state.get("_bake_date_col_ready"):
+        return
+    try:
+        if worksheet.col_count < 35:
+            worksheet.add_cols(35 - worksheet.col_count)
+        worksheet.format("AI:AI", {"numberFormat": {"type": "TEXT"}})
+    except Exception as e:
+        # Best effort — the RAW write below will still preserve text in most cases.
+        st.warning(f"Could not prep bake-date column (continuing anyway): {e}")
+    st.session_state["_bake_date_col_ready"] = True
+
+
 def update_bake_date(row_number: int, bake_date_str: str) -> bool:
     """Set when the customer plans to bake (Column AI = column 35).
 
     For fresh Neapolitan, this drives fermentation timing. Empty string clears.
-    Uses batch_update with value_input_option='RAW' (the same pattern used by
-    backfill_picked_up and bulk_create_invoices) so Sheets stores the literal
-    text instead of auto-formatting it as a date.
+    Ensures column AI exists and is text-formatted (first call per session),
+    then writes with value_input_option='RAW' so Sheets stores literal text.
     """
     spreadsheet = get_spreadsheet()
     if not spreadsheet:
         return False
     try:
         worksheet = spreadsheet.get_worksheet(0)
+        _ensure_bake_date_column(worksheet)
         worksheet.batch_update(
             [{"range": f"AI{row_number}", "values": [[bake_date_str or ""]]}],
             value_input_option="RAW",
