@@ -955,6 +955,83 @@ with tab3:
                     st.caption("   " + " · ".join(detail_lines))
         st.divider()
 
+    # ── Daily Pickup Schedule ──────────────────────────────────────────
+    # Per pickup day: who's coming, when they bake, and the fresh/frozen
+    # Neapolitan dough totals you need to have ready that day.
+    HEB_DAYS = {0: "שני", 1: "שלישי", 2: "רביעי", 3: "חמישי", 4: "שישי", 5: "שבת", 6: "ראשון"}
+    upcoming_for_schedule = sorted(
+        [o for o in pickup_queue if _parse_date(o["date"]) >= today_start],
+        key=lambda o: _parse_date(o["date"]),
+    )
+    if upcoming_for_schedule:
+        st.markdown("#### 📋 לוח איסופים יומי")
+        st.caption("לכל יום: מי אוסף · מתי הוא אופה · כמה טרי וקפוא צריך להיות מוכן")
+
+        from itertools import groupby as _gb_sched
+        for day_str, day_iter in _gb_sched(upcoming_for_schedule, key=lambda o: o["date"]):
+            day_orders = list(day_iter)
+            parsed_day = _parse_date(day_str)
+            heb_name = HEB_DAYS.get(parsed_day.weekday(), "")
+
+            fresh = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "fresh")
+            frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
+            unspec = sum(_neapolitan_count(o) for o in day_orders if _has_neapolitan(o) and not o["dough_type"])
+
+            with st.container(border=True):
+                st.markdown(f"### 📅 {day_str} · יום {heb_name}")
+
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                with mc1:
+                    st.metric("איסופים", len(day_orders))
+                with mc2:
+                    st.metric("🌿 טרי", fresh)
+                with mc3:
+                    st.metric("❄️ קפוא", frozen)
+                with mc4:
+                    if unspec:
+                        st.metric("❓ לא תויג", unspec)
+                    else:
+                        st.caption("✅ הכל תויג")
+
+                # Customer list
+                for o in day_orders:
+                    if _has_neapolitan(o):
+                        n = _neapolitan_count(o)
+                        if o["dough_type"] == "fresh":
+                            type_label = "🌿 טרי"
+                        elif o["dough_type"] == "frozen":
+                            type_label = "❄️ קפוא"
+                        else:
+                            type_label = "❓ לא תויג"
+                        bake = o.get("bake_date")
+                        bake_label = f" · אופה **{bake}**" if (bake and bake != o["date"]) else ""
+                        st.markdown(
+                            f"- **{o['customer']}** — {type_label} · {n} כדורי בצק{bake_label}"
+                        )
+                    else:
+                        # Non-Neapolitan: briefly summarize what they're collecting
+                        p = o["products"]
+                        items = []
+                        if (p.get("spelt_kit_qty") or 0) > 0:
+                            items.append(f"מארז כוסמין × {p['spelt_kit_qty']}")
+                        if (p.get("gluten_free_kit_qty") or 0) > 0:
+                            items.append(f"מארז ללא גלוטן × {p['gluten_free_kit_qty']}")
+                        if (p.get("spelt_dough_qty") or 0) > 0:
+                            items.append(f"בצק כוסמין × {p['spelt_dough_qty']}")
+                        if (p.get("gluten_free_dough_qty") or 0) > 0:
+                            items.append(f"בצק ללא גלוטן × {p['gluten_free_dough_qty']}")
+                        if (p.get("cheese_qty") or 0) > 0:
+                            items.append(f"גבינה × {p['cheese_qty']}")
+                        if (p.get("white_sauce_qty") or 0) > 0:
+                            items.append(f"רוטב לבן × {p['white_sauce_qty']}")
+                        if (p.get("red_sauce_qty") or 0) > 0:
+                            items.append(f"רוטב אדום × {p['red_sauce_qty']}")
+                        if (p.get("pizza_sandwich_qty") or 0) > 0:
+                            items.append(f"סדנת פיצה × {p['pizza_sandwich_qty']}")
+                        summary = ", ".join(items) if items else "פריטים נוספים"
+                        st.markdown(f"- **{o['customer']}** — {summary}")
+        st.divider()
+
     if not pickup_queue and not recently_picked:
         st.success("✅ All caught up — nothing pending pickup!")
     else:
