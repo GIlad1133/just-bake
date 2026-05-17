@@ -874,6 +874,87 @@ with tab3:
     st.subheader("📦 Pickup Queue")
     st.caption("All orders not yet picked up — paid or not. Mark each one as picked up when the customer collects it.")
 
+    # ── This Week's Kits summary ──────────────────────────────────────────
+    # Counts kits + cheese-only orders for the next 7 days (today included).
+    # Each kit qty counts. A "cheese-only" order is one whose only product is
+    # cheese (no kits, no dough, no sauce, no flour, no workshop).
+    week_start = today_start
+    week_end = today_start + timedelta(days=7)
+    this_week_orders = [
+        o for o in pickup_queue
+        if week_start <= _parse_date(o["date"]) < week_end
+    ]
+    if this_week_orders:
+        def _cheese_only(o):
+            p = o["products"]
+            if (p.get("cheese_qty") or 0) <= 0:
+                return False
+            other_qty = sum(
+                (p.get(f"{name}_qty") or 0)
+                for name in (
+                    "neapolitan_kit", "spelt_kit", "gluten_free_kit",
+                    "neapolitan_dough", "spelt_dough", "gluten_free_dough",
+                    "white_sauce", "red_sauce", "opening_flour", "pizza_sandwich",
+                )
+            )
+            return other_qty == 0
+
+        nean_total  = sum((o["products"].get("neapolitan_kit_qty") or 0) for o in this_week_orders)
+        spelt_total = sum((o["products"].get("spelt_kit_qty") or 0) for o in this_week_orders)
+        gf_total    = sum((o["products"].get("gluten_free_kit_qty") or 0) for o in this_week_orders)
+        cheese_only_orders = [o for o in this_week_orders if _cheese_only(o)]
+        total_units = nean_total + spelt_total + gf_total + len(cheese_only_orders)
+
+        with st.container(border=True):
+            st.markdown(f"#### 🧰 השבוע — {total_units} יחידות להכין")
+            st.caption(
+                f"חלון: {today_start.strftime('%d/%m')} – {(today_start + timedelta(days=6)).strftime('%d/%m')} · "
+                f"{len(this_week_orders)} הזמנות לאיסוף"
+            )
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            with mc1: st.metric("מארז נאפוליטני", nean_total)
+            with mc2: st.metric("מארז כוסמין", spelt_total)
+            with mc3: st.metric("מארז ללא גלוטן", gf_total)
+            with mc4: st.metric("הזמנות גבינה בלבד", len(cheese_only_orders))
+
+            # Per-day breakdown
+            from itertools import groupby as _gb_w
+            this_week_orders_sorted = sorted(this_week_orders, key=lambda o: _parse_date(o["date"]))
+            for day_str, day_iter in _gb_w(this_week_orders_sorted, key=lambda o: o["date"]):
+                day_orders = list(day_iter)
+                n = sum((o["products"].get("neapolitan_kit_qty") or 0) for o in day_orders)
+                s = sum((o["products"].get("spelt_kit_qty") or 0) for o in day_orders)
+                g = sum((o["products"].get("gluten_free_kit_qty") or 0) for o in day_orders)
+                co = sum(1 for o in day_orders if _cheese_only(o))
+                if n + s + g + co == 0:
+                    continue
+                parts = []
+                if n:  parts.append(f"נאפ׳ **{n}**")
+                if s:  parts.append(f"כוסמין **{s}**")
+                if g:  parts.append(f"ללא גלוטן **{g}**")
+                if co: parts.append(f"גבינה בלבד **{co}**")
+                st.markdown(f"📅 **{day_str}** — " + " · ".join(parts))
+                # Per-customer detail
+                detail_lines = []
+                for o in day_orders:
+                    n_, s_, g_ = (
+                        o["products"].get("neapolitan_kit_qty") or 0,
+                        o["products"].get("spelt_kit_qty") or 0,
+                        o["products"].get("gluten_free_kit_qty") or 0,
+                    )
+                    if n_ + s_ + g_ > 0:
+                        ktypes = []
+                        if n_: ktypes.append(f"נאפ׳ {n_}")
+                        if s_: ktypes.append(f"כוס׳ {s_}")
+                        if g_: ktypes.append(f"ללא גלוטן {g_}")
+                        detail_lines.append(f"{o['customer']} ({', '.join(ktypes)})")
+                    elif _cheese_only(o):
+                        c_ = o["products"].get("cheese_qty") or 0
+                        detail_lines.append(f"{o['customer']} (גבינה {c_})")
+                if detail_lines:
+                    st.caption("   " + " · ".join(detail_lines))
+        st.divider()
+
     if not pickup_queue and not recently_picked:
         st.success("✅ All caught up — nothing pending pickup!")
     else:
