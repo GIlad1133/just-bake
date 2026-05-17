@@ -525,15 +525,6 @@ def _neapolitan_count(order) -> int:
 def _has_neapolitan(order) -> bool:
     return _neapolitan_count(order) > 0
 
-def _effective_dough_date(order) -> str:
-    """The date by which the dough must be READY.
-
-    Fresh orders: bake date (drives fermentation start time).
-    Frozen / unspecified: pickup date (when to thaw or hand over).
-    """
-    if order.get("dough_type") == "fresh" and order.get("bake_date"):
-        return order["bake_date"]
-    return order["date"]
 
 not_paid = sorted(
     [o for o in all_orders if not _is_paid(o["payment_method"])],
@@ -1248,58 +1239,6 @@ with tab3:
                             st.session_state.editing_row = None
                             _pickup_rerun()
                     st.divider()
-
-        # ── Neapolitan dough prep (fresh by BAKE date, frozen by PICKUP date) ──
-        neapolitan_orders = [o for o in pickup_queue if _has_neapolitan(o)]
-        if neapolitan_orders:
-            st.markdown("#### 🍞 Neapolitan Dough Prep")
-            st.caption("Fresh grouped by bake date · Frozen / unspecified grouped by pickup date. Tells you what needs to be **ready** by each date.")
-            # Index orders by their effective prep date
-            by_date = {}
-            for o in neapolitan_orders:
-                key = _effective_dough_date(o)
-                by_date.setdefault(key, []).append(o)
-            def _name_list(orders, predicate):
-                return ", ".join(
-                    f"{o['customer']} ({_neapolitan_count(o)})"
-                    for o in orders if predicate(o)
-                )
-
-            def _name_list_with_pickup(orders, predicate):
-                # Fresh orders: customer + balls + pickup date so you know when
-                # each one is *collecting* (vs the bake-date section header).
-                return ", ".join(
-                    f"{o['customer']} ({_neapolitan_count(o)} · picks up {o['date']})"
-                    for o in orders if predicate(o)
-                )
-
-            # Sort dates chronologically
-            for day_str in sorted(by_date.keys(), key=_parse_date):
-                day_orders = by_date[day_str]
-                fresh = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "fresh")
-                frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
-                unspecified = sum(_neapolitan_count(o) for o in day_orders if not o["dough_type"])
-                with st.container(border=True):
-                    st.markdown(
-                        f"**📅 {day_str}** — {len(day_orders)} order{'s' if len(day_orders) != 1 else ''}"
-                    )
-                    m1, m2, m3 = st.columns(3)
-                    with m1:
-                        st.metric("🌿 Fresh", fresh)
-                    with m2:
-                        st.metric("❄️ Frozen", frozen)
-                    with m3:
-                        if unspecified:
-                            st.metric("❓ Unspecified", unspecified)
-                        else:
-                            st.caption("✅ All tagged")
-                    if fresh:
-                        st.caption(f"🌿 {_name_list_with_pickup(day_orders, lambda o: o['dough_type'] == 'fresh')}")
-                    if frozen:
-                        st.caption(f"❄️ {_name_list(day_orders, lambda o: o['dough_type'] == 'frozen')}")
-                    if unspecified:
-                        st.caption(f"❓ {_name_list(day_orders, lambda o: not o['dough_type'])}")
-            st.divider()
 
         # ── Overdue section (most urgent — safety net for stale dates) ────
         if overdue_orders:
