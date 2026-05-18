@@ -8,6 +8,40 @@ import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 
+def _date_input_dmy(label, value=None, key=None, on_change=None,
+                    label_visibility="visible", help=None):
+    """Date picker as a DD/MM/YYYY text input.
+
+    Streamlit's native st.date_input pops a calendar whose first column
+    depends on the browser locale and can't be configured from Python.
+    This helper bypasses the calendar entirely — user types the date in
+    Israeli format. Returns a datetime.date, falling back to the passed
+    value if the input doesn't parse.
+    """
+    if value is None:
+        value = date.today()
+    if isinstance(value, datetime):
+        value = value.date()
+
+    text_val = st.text_input(
+        label,
+        value=value.strftime("%d/%m/%Y"),
+        key=key,
+        placeholder="DD/MM/YYYY",
+        help=help or "פורמט: יום/חודש/שנה",
+        on_change=on_change,
+        label_visibility=label_visibility,
+    )
+
+    s = (text_val or "").strip()
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return value
+
+
 def _normalize_dmy(date_str: str) -> str:
     """Force any date string to DD/MM/YYYY.
 
@@ -718,7 +752,7 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                         parsed_date = date(int(y), int(m), int(d))
                     except Exception:
                         parsed_date = date.today()
-                    edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_{order['row']}")
+                    edit_date = _date_input_dmy("Date", value=parsed_date, key=f"edit_date_{order['row']}")
 
                 with ec2:
                     edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_{order['row']}")
@@ -787,7 +821,7 @@ def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger
                         current_bake_date = date(int(y), int(m), int(d))
                     except Exception:
                         current_bake_date = edit_date if isinstance(edit_date, date) else date.today()
-                    edit_bake_date = st.date_input(
+                    edit_bake_date = _date_input_dmy(
                         "🍞 Bake date (when customer plans to bake)",
                         value=current_bake_date,
                         key=f"edit_bake_{order['row']}",
@@ -1074,7 +1108,7 @@ with tab3:
                     except Exception:
                         current_coll_date = date.today()
 
-                    new_coll_date = st.date_input(
+                    new_coll_date = _date_input_dmy(
                         "Collection date",
                         value=current_coll_date,
                         key=f"coll_date_pq_{order['row']}",
@@ -1149,7 +1183,7 @@ with tab3:
                             parsed_date = date(int(y), int(m), int(d))
                         except Exception:
                             parsed_date = date.today()
-                        edit_date = st.date_input("Date", value=parsed_date, key=f"edit_date_pq_{order['row']}", on_change=_pickup_on_change)
+                        edit_date = _date_input_dmy("Date", value=parsed_date, key=f"edit_date_pq_{order['row']}", on_change=_pickup_on_change)
                     with ec2:
                         edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_pq_{order['row']}", on_change=_pickup_on_change)
                         method_keys = list(PAYMENT_METHODS.keys())
@@ -1220,7 +1254,7 @@ with tab3:
                             current_bake_date = date(int(y), int(m), int(d))
                         except Exception:
                             current_bake_date = edit_date if isinstance(edit_date, date) else date.today()
-                        edit_bake_date = st.date_input(
+                        edit_bake_date = _date_input_dmy(
                             "🍞 Bake date (when customer plans to bake)",
                             value=current_bake_date,
                             key=f"edit_bake_pq_{order['row']}",
