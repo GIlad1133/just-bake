@@ -10,40 +10,7 @@ import os
 from dotenv import load_dotenv
 from products import PRODUCTS, PAYMENT_METHODS
 from sheets_client import get_sheets_client, get_spreadsheet
-
-
-def _date_input_dmy(label, value=None, key=None, on_change=None,
-                    label_visibility="visible", help=None):
-    """Date picker as a DD/MM/YYYY text input.
-
-    Streamlit's native st.date_input pops a calendar whose first column
-    depends on the browser locale and can't be configured from Python.
-    This helper bypasses the calendar entirely — user types the date in
-    Israeli format. Returns a datetime.date, falling back to the passed
-    value if the input doesn't parse.
-    """
-    if value is None:
-        value = date.today()
-    if isinstance(value, datetime):
-        value = value.date()
-
-    text_val = st.text_input(
-        label,
-        value=value.strftime("%d/%m/%Y"),
-        key=key,
-        placeholder="DD/MM/YYYY",
-        help=help or "פורמט: יום/חודש/שנה",
-        on_change=on_change,
-        label_visibility=label_visibility,
-    )
-
-    s = (text_val or "").strip()
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
-    return value
+from date_widget import date_input_dmy as _date_input_dmy
 
 load_dotenv()
 

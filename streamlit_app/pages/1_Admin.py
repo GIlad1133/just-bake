@@ -8,40 +8,6 @@ import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 
-def _date_input_dmy(label, value=None, key=None, on_change=None,
-                    label_visibility="visible", help=None):
-    """Date picker as a DD/MM/YYYY text input.
-
-    Streamlit's native st.date_input pops a calendar whose first column
-    depends on the browser locale and can't be configured from Python.
-    This helper bypasses the calendar entirely — user types the date in
-    Israeli format. Returns a datetime.date, falling back to the passed
-    value if the input doesn't parse.
-    """
-    if value is None:
-        value = date.today()
-    if isinstance(value, datetime):
-        value = value.date()
-
-    text_val = st.text_input(
-        label,
-        value=value.strftime("%d/%m/%Y"),
-        key=key,
-        placeholder="DD/MM/YYYY",
-        help=help or "פורמט: יום/חודש/שנה",
-        on_change=on_change,
-        label_visibility=label_visibility,
-    )
-
-    s = (text_val or "").strip()
-    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(s, fmt).date()
-        except ValueError:
-            continue
-    return value
-
-
 def _normalize_dmy(date_str: str) -> str:
     """Force any date string to DD/MM/YYYY.
 
@@ -80,6 +46,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))           # streamlit_app/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))  # project root
 from sheets_client import get_sheets_client, get_spreadsheet
+from date_widget import date_input_dmy as _date_input_dmy
 from products import PRODUCTS, PAYMENT_METHODS
 from src.google_sheets import GoogleSheetsClient
 from src.keep_client import KeepClient
