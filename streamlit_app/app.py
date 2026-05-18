@@ -4,12 +4,46 @@ Streamlit web app for entering new pizza orders.
 """
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, date
 import uuid
 import os
 from dotenv import load_dotenv
 from products import PRODUCTS, PAYMENT_METHODS
 from sheets_client import get_sheets_client, get_spreadsheet
+
+
+def _date_input_dmy(label, value=None, key=None, on_change=None,
+                    label_visibility="visible", help=None):
+    """Date picker as a DD/MM/YYYY text input.
+
+    Streamlit's native st.date_input pops a calendar whose first column
+    depends on the browser locale and can't be configured from Python.
+    This helper bypasses the calendar entirely — user types the date in
+    Israeli format. Returns a datetime.date, falling back to the passed
+    value if the input doesn't parse.
+    """
+    if value is None:
+        value = date.today()
+    if isinstance(value, datetime):
+        value = value.date()
+
+    text_val = st.text_input(
+        label,
+        value=value.strftime("%d/%m/%Y"),
+        key=key,
+        placeholder="DD/MM/YYYY",
+        help=help or "פורמט: יום/חודש/שנה",
+        on_change=on_change,
+        label_visibility=label_visibility,
+    )
+
+    s = (text_val or "").strip()
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return value
 
 load_dotenv()
 
@@ -199,7 +233,7 @@ with col2:
 
 col3, col4 = st.columns(2)
 with col3:
-    order_date = st.date_input("Date *", value=datetime.now(), key=f"v{v}_date")
+    order_date = _date_input_dmy("Date *", value=datetime.now(), key=f"v{v}_date")
 with col4:
     payment_method = st.selectbox(
         "Payment *",
@@ -283,7 +317,7 @@ if has_neapolitan_in_form:
         horizontal=True,
         key=f"v{v}_dough_type",
     )
-    bake_date = st.date_input(
+    bake_date = _date_input_dmy(
         "🍞 Bake date (when will the customer bake?)",
         value=order_date,
         key=f"v{v}_bake_date",
