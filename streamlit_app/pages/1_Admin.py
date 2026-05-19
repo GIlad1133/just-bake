@@ -968,22 +968,42 @@ with tab3:
             fresh = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "fresh")
             frozen = sum(_neapolitan_count(o) for o in day_orders if o["dough_type"] == "frozen")
             unspec = sum(_neapolitan_count(o) for o in day_orders if _has_neapolitan(o) and not o["dough_type"])
+            # Spelt + GF balls = standalone dough + kit qty × 5 doughs per kit
+            spelt_balls = sum(
+                (o["products"].get("spelt_dough_qty") or 0)
+                + (o["products"].get("spelt_kit_qty") or 0) * 5
+                for o in day_orders
+            )
+            gf_balls = sum(
+                (o["products"].get("gluten_free_dough_qty") or 0)
+                + (o["products"].get("gluten_free_kit_qty") or 0) * 5
+                for o in day_orders
+            )
 
             with st.container(border=True):
                 st.markdown(f"### 📅 {day_str} · יום {heb_name}")
 
+                # Row 1: pickup count + Neapolitan fresh/frozen/unspec
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 with mc1:
                     st.metric("איסופים", len(day_orders))
                 with mc2:
-                    st.metric("🌿 טרי", fresh)
+                    st.metric("🌿 נאפ׳ טרי", fresh)
                 with mc3:
-                    st.metric("❄️ קפוא", frozen)
+                    st.metric("❄️ נאפ׳ קפוא", frozen)
                 with mc4:
                     if unspec:
-                        st.metric("❓ לא תויג", unspec)
+                        st.metric("❓ נאפ׳ לא תויג", unspec)
                     else:
-                        st.caption("✅ הכל תויג")
+                        st.caption("✅ הכל תויג (נאפ׳)")
+
+                # Row 2: spelt + GF balls (no fresh/frozen split for these types)
+                if spelt_balls or gf_balls:
+                    sc1, sc2, _sc3, _sc4 = st.columns(4)
+                    with sc1:
+                        st.metric("🌾 כוסמין", spelt_balls)
+                    with sc2:
+                        st.metric("🌽 ללא גלוטן", gf_balls)
 
                 # Customer list
                 for o in day_orders:
