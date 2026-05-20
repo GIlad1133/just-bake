@@ -6,7 +6,7 @@ Sales insights: revenue over time, top customers, product breakdown.
 import streamlit as st
 import pandas as pd
 import altair as alt
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import os
 import sys
 
@@ -64,8 +64,19 @@ def load_data() -> pd.DataFrame:
 
         payment = row[3].strip() if len(row) > 3 else ""
 
+        # AH (index 33) holds "fresh" / "frozen" / "" for Neapolitan orders
+        dough_type = ""
+        if len(row) > 33 and row[33]:
+            dough_type = row[33].strip().lower()
+
         # Product revenue per product
-        product_data = {"date": pd.Timestamp(date), "customer": row[1].strip(), "amount": amount, "payment": payment}
+        product_data = {
+            "date": pd.Timestamp(date),
+            "customer": row[1].strip(),
+            "amount": amount,
+            "payment": payment,
+            "dough_type": dough_type,
+        }
         for pi, product in enumerate(PRODUCTS):
             prefix = product["column_prefix"]
             try:
@@ -103,23 +114,52 @@ if df.empty:
     st.info("No orders found.")
     st.stop()
 
-# ─── Filters ──────────────────────────────────────────────────────────────────
-
-col_f1, col_f2, col_f3 = st.columns(3)
-with col_f1:
-    period = st.selectbox("Group by", ["Month", "Week", "Day"], index=0)
+# ─── Date range filter ────────────────────────────────────────────────────────
 
 min_date = df["date"].min().date()
 max_date = df["date"].max().date()
+today = date.today()
+this_month_start = today.replace(day=1)
+prev_month_end = this_month_start - timedelta(days=1)
+prev_month_start = prev_month_end.replace(day=1)
 
-with col_f2:
-    date_from = st.date_input("From", value=min_date, min_value=min_date)
-with col_f3:
-    date_to = st.date_input("To", value=max_date, min_value=min_date)
+PRESETS = {
+    "החודש":           (this_month_start, today),
+    "החודש שעבר":      (prev_month_start, prev_month_end),
+    "7 ימים אחרונים":  (today - timedelta(days=6), today),
+    "30 ימים אחרונים": (today - timedelta(days=29), today),
+    "השנה":            (date(today.year, 1, 1), today),
+    "הכל":             (min_date, max_date),
+    "מותאם אישית":     None,
+}
+
+st.markdown("### 📅 טווח תאריכים")
+preset = st.radio(
+    "Quick range",
+    options=list(PRESETS.keys()),
+    horizontal=True,
+    index=0,
+    label_visibility="collapsed",
+)
+
+if PRESETS[preset] is not None:
+    date_from, date_to = PRESETS[preset]
+    st.caption(
+        f"📅 {date_from.strftime('%d/%m/%Y')} עד {date_to.strftime('%d/%m/%Y')}  ·  "
+        f"{(date_to - date_from).days + 1} ימים"
+    )
+else:
+    col_f2, col_f3 = st.columns(2)
+    with col_f2:
+        date_from = st.date_input("From", value=min_date, min_value=min_date)
+    with col_f3:
+        date_to = st.date_input("To", value=max_date, min_value=min_date)
 
 if date_from > date_to:
     st.warning("'From' date must be before 'To' date.")
     st.stop()
+
+period = st.selectbox("Group by", ["Month", "Week", "Day"], index=0)
 
 df = df[(df["date"].dt.date >= date_from) & (df["date"].dt.date <= date_to)]
 
@@ -140,6 +180,70 @@ k1.metric("Total Revenue", f"₪{total_revenue:,.0f}")
 k2.metric("Orders", total_orders)
 k3.metric("Avg Order Value", f"₪{avg_order:,.0f}")
 k4.metric("Customers", unique_customers)
+
+st.divider()
+
+# ─── Quantity Breakdown (dough balls + kits) ──────────────────────────────────
+
+st.subheader("🍞 כמויות שנמכרו בטווח")
+
+# Sum quantities — kit × 5 + standalone = total balls per type
+n_kit_qty  = df["neapolitan_kit_qty"].sum()
+s_kit_qty  = df["spelt_kit_qty"].sum()
+gf_kit_qty = df["gluten_free_kit_qty"].sum()
+n_dough_qty  = df["neapolitan_dough_qty"].sum()
+s_dough_qty  = df["spelt_dough_qty"].sum()
+gf_dough_qty = df["gluten_free_dough_qty"].sum()
+
+n_balls  = int(n_dough_qty + n_kit_qty * 5)
+s_balls  = int(s_dough_qty + s_kit_qty * 5)
+gf_balls = int(gf_dough_qty + gf_kit_qty * 5)
+total_balls = n_balls + s_balls + gf_balls
+
+# Fresh/frozen split (Neapolitan only)
+def _nean_balls(r):
+    return int(r["neapolitan_dough_qty"] + r["neapolitan_kit_qty"] * 5)
+
+fresh_balls  = int(df[df["dough_type"] == "fresh"].apply(_nean_balls, axis=1).sum()) if not df.empty else 0
+frozen_balls = int(df[df["dough_type"] == "frozen"].apply(_nean_balls, axis=1).sum()) if not df.empty else 0
+unspec_balls = n_balls - fresh_balls - frozen_balls
+
+days_in_range = (date_to - date_from).days + 1
+avg_balls_per_day = total_balls / max(days_in_range, 1)
+
+q1, q2, q3, q4 = st.columns(4)
+q1.metric("סך כדורי בצק", total_balls)
+q2.metric("נאפוליטני", n_balls)
+q3.metric("כוסמין", s_balls)
+q4.metric("ללא גלוטן", gf_balls)
+
+if n_balls > 0:
+    st.caption(
+        f"מתוך הנאפוליטני:  🌿 טרי **{fresh_balls}**  ·  "
+        f"❄️ קפוא **{frozen_balls}**  ·  "
+        f"❓ לא תויג **{unspec_balls}**"
+    )
+
+st.caption(f"ממוצע כדורים ליום: **{avg_balls_per_day:.1f}**  ·  סה״כ {int(n_kit_qty + s_kit_qty + gf_kit_qty)} מארזים")
+
+# Quick per-type quantity table for other products
+other_qty = {}
+for prefix, hebrew in [
+    ("cheese", "גבינה"),
+    ("white_sauce", "רוטב לבן"),
+    ("red_sauce", "רוטב אדום"),
+    ("opening_flour", "קמח פתיחה"),
+    ("pizza_sandwich", "סדנת פיצה"),
+]:
+    qty_col = f"{prefix}_qty"
+    if qty_col in df.columns:
+        total = int(df[qty_col].sum())
+        if total > 0:
+            other_qty[hebrew] = total
+
+if other_qty:
+    parts = [f"**{h}**: {v}" for h, v in other_qty.items()]
+    st.caption("מוצרים נוספים — " + "  ·  ".join(parts))
 
 st.divider()
 
