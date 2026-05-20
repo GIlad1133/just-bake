@@ -64,18 +64,12 @@ def load_data() -> pd.DataFrame:
 
         payment = row[3].strip() if len(row) > 3 else ""
 
-        # AH (index 33) holds "fresh" / "frozen" / "" for Neapolitan orders
-        dough_type = ""
-        if len(row) > 33 and row[33]:
-            dough_type = row[33].strip().lower()
-
         # Product revenue per product
         product_data = {
             "date": pd.Timestamp(date),
             "customer": row[1].strip(),
             "amount": amount,
             "payment": payment,
-            "dough_type": dough_type,
         }
         for pi, product in enumerate(PRODUCTS):
             prefix = product["column_prefix"]
@@ -200,14 +194,6 @@ s_balls  = int(s_dough_qty + s_kit_qty * 5)
 gf_balls = int(gf_dough_qty + gf_kit_qty * 5)
 total_balls = n_balls + s_balls + gf_balls
 
-# Fresh/frozen split (Neapolitan only)
-def _nean_balls(r):
-    return int(r["neapolitan_dough_qty"] + r["neapolitan_kit_qty"] * 5)
-
-fresh_balls  = int(df[df["dough_type"] == "fresh"].apply(_nean_balls, axis=1).sum()) if not df.empty else 0
-frozen_balls = int(df[df["dough_type"] == "frozen"].apply(_nean_balls, axis=1).sum()) if not df.empty else 0
-unspec_balls = n_balls - fresh_balls - frozen_balls
-
 days_in_range = (date_to - date_from).days + 1
 avg_balls_per_day = total_balls / max(days_in_range, 1)
 
@@ -216,13 +202,6 @@ q1.metric("סך כדורי בצק", total_balls)
 q2.metric("נאפוליטני", n_balls)
 q3.metric("כוסמין", s_balls)
 q4.metric("ללא גלוטן", gf_balls)
-
-if n_balls > 0:
-    st.caption(
-        f"מתוך הנאפוליטני:  🌿 טרי **{fresh_balls}**  ·  "
-        f"❄️ קפוא **{frozen_balls}**  ·  "
-        f"❓ לא תויג **{unspec_balls}**"
-    )
 
 st.caption(f"ממוצע כדורים ליום: **{avg_balls_per_day:.1f}**  ·  סה״כ {int(n_kit_qty + s_kit_qty + gf_kit_qty)} מארזים")
 
