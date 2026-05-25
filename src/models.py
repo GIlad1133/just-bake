@@ -8,6 +8,15 @@ from typing import List, Optional
 from datetime import datetime
 
 
+def _sanitize_phone(phone: str) -> str:
+    """Strip everything but digits — Keep.co.il rejects non-ASCII characters
+    like U+2011 (non-breaking hyphen) and U+202C (bidi mark) that leak in
+    from WhatsApp / iPhone Contacts copy-paste."""
+    if not phone:
+        return ""
+    return "".join(c for c in phone if c.isdigit())
+
+
 @dataclass
 class OrderItem:
     """Individual product in an order (dough, kit, sauce, etc.)"""
@@ -101,7 +110,7 @@ class KeepReceipt:
         # Build client object
         client_data = {
             "name": self.customer_name,
-            "phone": self.phone or ""
+            "phone": _sanitize_phone(self.phone)
         }
 
         # Add business ID if provided (for B2B customers)
