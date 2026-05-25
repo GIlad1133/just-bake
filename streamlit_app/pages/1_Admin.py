@@ -539,7 +539,10 @@ paid_no_invoice = [
     if _is_paid(o["payment_method"])
     and (include_cash or not _is_cash(o["payment_method"]))
     and not o["invoice_url"].strip()
-    and o["create_invoice"].strip().lower() != "yes"
+    and (
+        o["create_invoice"].strip().lower() != "yes"
+        or o["status"].strip()  # stuck-with-error rows so user can retry manually
+    )
 ]
 
 paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
