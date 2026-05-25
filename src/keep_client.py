@@ -145,18 +145,34 @@ class KeepClient:
                     time.sleep(wait_time)
                     return self._make_request(method, endpoint, data, retry_count + 1, max_retries)
 
-            # Raise for other error status codes
-            response.raise_for_status()
+            # Raise for other error status codes — include the response body so
+            # the actual reason from Keep.co.il (validation errors, etc) propagates
+            if not response.ok:
+                body = (response.text or "").strip()
+                # Truncate very long bodies but keep enough to be useful
+                if len(body) > 600:
+                    body = body[:600] + "…"
+                raise Exception(
+                    f"Keep.co.il API {response.status_code} {response.reason} "
+                    f"on {method} {endpoint}: {body or '<empty body>'}"
+                )
 
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            if retry_count < max_retries:
+            # Don't retry 4xx errors — they won't fix themselves
+            if retry_count < max_retries and not isinstance(e, requests.exceptions.HTTPError):
                 wait_time = 2 ** retry_count
                 time.sleep(wait_time)
                 return self._make_request(method, endpoint, data, retry_count + 1, max_retries)
             else:
-                raise Exception(f"Keep.co.il API request failed: {e}")
+                # Try to surface response body if we have one
+                detail = str(e)
+                if e.response is not None:
+                    body = (e.response.text or "").strip()
+                    if body:
+                        detail = f"{e} — body: {body[:600]}"
+                raise Exception(f"Keep.co.il API request failed: {detail}")
 
     @staticmethod
     def _convert_shekels_to_agorot(amount: float) -> int:
