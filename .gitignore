@@ -21,24 +21,26 @@ env/
 *.swp
 *.swo
 
-# Temporary test scripts
-check_*.py
-scan_*.py
-test_*.py
-fix_*.py
-verify_*.py
-process_*.py
-find_*.py
-recreate_*.py
-final_*.py
+# Temporary scratch scripts — root-level only, so the tests/ dir is NOT ignored
+/check_*.py
+/scan_*.py
+/test_*.py
+/fix_*.py
+/verify_*.py
+/process_*.py
+/find_*.py
+/recreate_*.py
+/final_*.py
 
 # Secret files
 invoice-keep-*.json
 *service_account*.json
 streamlit_secrets*.txt
 netlify.txt
-*_secret*.txt
+secret.txt
+*secret*.txt
 *_credentials*.txt
+*credentials*.txt
 
 # Claude files
 CLAUDE.md
