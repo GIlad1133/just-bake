@@ -4,7 +4,6 @@ Secure admin interface for managing orders, payments, and invoices.
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import datetime, date, timedelta
 
 
@@ -527,26 +526,8 @@ def _has_neapolitan(order) -> bool:
     return _neapolitan_count(order) > 0
 
 
-not_paid = sorted(
-    [o for o in all_orders if not _is_paid(o["payment_method"])],
-    key=lambda o: _parse_date(o["date"])
-)
-
-include_cash = st.sidebar.checkbox("Include cash orders in No Invoice tab", value=False)
-
-paid_no_invoice = [
-    o for o in all_orders
-    if _is_paid(o["payment_method"])
-    and (include_cash or not _is_cash(o["payment_method"]))
-    and not o["invoice_url"].strip()
-    and (
-        o["create_invoice"].strip().lower() != "yes"
-        or o["status"].strip()  # stuck-with-error rows so user can retry manually
-    )
-]
-
-paid_no_invoice.sort(key=lambda o: _parse_date(o["date"]))
-
+# ─── Sidebar controls ─────────────────────────────────────────────────────────
+include_cash = st.sidebar.checkbox("Include cash orders in invoice actions", value=False)
 show_picked_up = st.sidebar.checkbox("Show recently picked-up orders", value=False)
 
 with st.sidebar.expander("⚙️ Tools"):
@@ -568,13 +549,11 @@ with st.sidebar.expander("⚙️ Tools"):
 today_start = datetime.combine(date.today(), datetime.min.time())
 tomorrow_start = datetime.combine(date.today() + timedelta(days=1), datetime.min.time())
 
+# Orders not yet picked up — used by the weekly/daily production-planning summaries.
 pickup_queue = sorted(
     [o for o in all_orders if not o["picked_up"]],
     key=lambda o: _parse_date(o["date"])
 )
-overdue_orders = [o for o in pickup_queue if _parse_date(o["date"]) < today_start]
-today_pickups = [o for o in pickup_queue if today_start <= _parse_date(o["date"]) < tomorrow_start]
-upcoming_pickups = [o for o in pickup_queue if _parse_date(o["date"]) >= tomorrow_start]
 
 recently_picked = sorted(
     [o for o in all_orders if o["picked_up"]],
@@ -582,266 +561,95 @@ recently_picked = sorted(
     reverse=True
 )[:20] if show_picked_up else []
 
-# ─── Tabs ─────────────────────────────────────────────────────────────────────
-
-# After creating an invoice we rerun — re-click tab2 so the user stays there
-if st.session_state.pop("return_to_invoice_tab", False):
-    components.html("""
-    <script>
-    (function() {
-        function clickTab() {
-            const tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
-            if (tabs.length > 1) { tabs[1].click(); return; }
-            setTimeout(clickTab, 50);
-        }
-        setTimeout(clickTab, 50);
-    })();
-    </script>
-    """, height=0)
-
-# After pickup actions we rerun — re-click tab3 (index 2) so the user stays in the queue
-if st.session_state.pop("return_to_pickup_tab", False):
-    components.html("""
-    <script>
-    (function() {
-        function clickTab() {
-            const tabs = window.parent.document.querySelectorAll('[data-baseweb="tab"]');
-            if (tabs.length > 2) { tabs[2].click(); return; }
-            setTimeout(clickTab, 50);
-        }
-        setTimeout(clickTab, 50);
-    })();
-    </script>
-    """, height=0)
+# ─── Single-page layout (replaces the old Not Paid / Paid / Pickup tabs) ──────
+# One scrolling page grouped by pickup day. Each order card carries every action
+# it still needs (pay · invoice · pickup · edit · delete), so a single customer
+# is handled in one place — no tab-hopping and no rerun bounce.
 
 def _pickup_rerun():
-    """Set tab-restore flag, then rerun. Use inside any pickup-queue action."""
-    st.session_state.return_to_pickup_tab = True
+    """Rerun in place. Kept as a named helper so the many existing call sites
+    stay unchanged; with tabs gone there is no tab to restore."""
     st.rerun()
 
 def _pickup_on_change():
-    """Widget on_change callback — sets the tab-restore flag so the implicit
-    rerun from a value change doesn't bounce the user back to Not Paid."""
-    st.session_state.return_to_pickup_tab = True
+    """No-op widget callback. Tabs are gone, so there is nothing to restore."""
+    pass
 
-pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)})"
-if overdue_orders:
-    pickup_tab_label = f"📦 Pickup Queue ({len(pickup_queue)} · 🔴 {len(overdue_orders)} overdue)"
+only_needs_payment = st.sidebar.checkbox("Filter: only orders needing payment", value=False)
+only_needs_invoice = st.sidebar.checkbox("Filter: only orders needing an invoice", value=False)
 
-tab1, tab2, tab3 = st.tabs([
-    f"⚠️ Not Paid ({len(not_paid)})",
-    f"🧾 Paid - No Invoice ({len(paid_no_invoice)})",
-    pickup_tab_label,
-])
 
-def render_order_table(orders, allow_payment_update=False, allow_invoice_trigger=False):
-    """Render a table of orders with optional action buttons."""
-    if not orders:
-        st.success("✅ Nothing here!")
-        return
+def _needs_invoice(o):
+    """Paid, no invoice yet, not excluded as cash — i.e. an invoice is due.
+    Also surfaces rows stuck with an error so they can be retried manually."""
+    return (
+        _is_paid(o["payment_method"])
+        and (include_cash or not _is_cash(o["payment_method"]))
+        and not o["invoice_url"].strip()
+        and (o["create_invoice"].strip().lower() != "yes" or o["status"].strip())
+    )
 
-    for order in orders:
-        with st.container(border=True):
-            col1, col2, col3, col4 = st.columns([2, 1, 1, 2])
 
-            with col1:
-                st.markdown(f"**{order['customer']}**")
-                st.caption(f"📅 {order['date']}  ·  📞 {order['phone'] or '—'}")
+def _is_done(o):
+    """Finished = picked up, paid, and either invoiced or cash (cash needs no invoice)."""
+    return (
+        o["picked_up"]
+        and _is_paid(o["payment_method"])
+        and (bool(o["invoice_url"].strip()) or _is_cash(o["payment_method"]))
+    )
 
-            with col2:
-                st.metric("Amount", f"₪{order['amount']}")
 
-            with col3:
-                st.markdown(f"**Payment**")
-                st.caption(order["payment_method"] or "—")
+# Active work = every order still needing payment, an invoice, or pickup.
+active_orders = [o for o in all_orders if not _is_done(o)]
+if only_needs_payment:
+    active_orders = [o for o in active_orders if not _is_paid(o["payment_method"])]
+if only_needs_invoice:
+    active_orders = [o for o in active_orders if _needs_invoice(o)]
 
-            with col4:
-                if allow_payment_update:
-                    new_method = st.selectbox(
-                        "Mark as paid",
-                        options=["—", "Bit", "Paybox", "מזומן"],
-                        key=f"pay_{order['row']}",
-                        label_visibility="collapsed"
-                    )
-                    if new_method != "—":
-                        if st.button("✅ Update Payment", key=f"btn_pay_{order['row']}", use_container_width=True):
-                            if update_payment_method(order["row"], new_method):
-                                st.success(f"Updated to {new_method}")
-                                st.rerun()
+active_orders.sort(key=lambda o: _parse_date(o["date"]))
+overdue_orders = [o for o in active_orders if _parse_date(o["date"]) < today_start]
+today_pickups = [o for o in active_orders if today_start <= _parse_date(o["date"]) < tomorrow_start]
+upcoming_pickups = [o for o in active_orders if _parse_date(o["date"]) >= tomorrow_start]
 
-                    # Edit button
-                    is_editing = st.session_state.editing_row == order["row"]
-                    edit_label = "✏️ Cancel Edit" if is_editing else "✏️ Edit Order"
-                    if st.button(edit_label, key=f"btn_edit_{order['row']}", use_container_width=True):
-                        st.session_state.editing_row = None if is_editing else order["row"]
-                        st.rerun()
+# Top-of-page counts so the owner sees outstanding work at a glance.
+_n_pay = sum(1 for o in active_orders if not _is_paid(o["payment_method"]))
+_n_inv = sum(1 for o in active_orders if _needs_invoice(o))
+mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+mcol1.metric("📦 To pick up", len(active_orders))
+mcol2.metric("🔴 Overdue", len(overdue_orders))
+mcol3.metric("💰 Need payment", _n_pay)
+mcol4.metric("🧾 Need invoice", _n_inv)
+st.divider()
 
-                if allow_invoice_trigger:
-                    is_selected = order["row"] in st.session_state.selected_invoices
-                    new_selected = st.checkbox(
-                        "🧾 Select for invoice",
-                        value=is_selected,
-                        key=f"sel_inv_{order['row']}",
-                    )
-                    if new_selected and not is_selected:
-                        st.session_state.selected_invoices.add(order["row"])
-                    elif not new_selected and is_selected:
-                        st.session_state.selected_invoices.discard(order["row"])
+# ─── Bulk invoice bar ─────────────────────────────────────────────────────────
+# Show results from the last bulk run (stashed just before its rerun).
+if "bulk_invoice_results" in st.session_state:
+    results = st.session_state.pop("bulk_invoice_results")
+    if results["successes"]:
+        st.success(f"✅ Created {results['successes']} invoice{'s' if results['successes'] != 1 else ''}")
+    if results["failures"]:
+        st.error(f"❌ {len(results['failures'])} failed:")
+        for row_num, msg in results["failures"]:
+            label = f"Row {row_num}" if row_num else "—"
+            st.write(f"- {label}: {msg}")
 
-                if order["invoice_url"]:
-                    st.link_button("📄 View Invoice", order["invoice_url"], use_container_width=True)
+invoiceable = [o for o in active_orders if _needs_invoice(o)]
+invoiceable_rows = {o["row"] for o in invoiceable}
+# Drop selections that are no longer invoiceable (just invoiced, or filtered out).
+st.session_state.selected_invoices &= invoiceable_rows
+n_selected = len(st.session_state.selected_invoices)
 
-                # Delete button with confirmation
-                if st.session_state.confirm_delete_row == order["row"]:
-                    st.warning("Are you sure?")
-                    dc1, dc2 = st.columns(2)
-                    with dc1:
-                        if st.button("🗑️ Yes, delete", key=f"confirm_del_{order['row']}", use_container_width=True, type="primary"):
-                            if delete_order(order["row"]):
-                                st.session_state.confirm_delete_row = None
-                                st.rerun()
-                    with dc2:
-                        if st.button("Cancel", key=f"cancel_del_{order['row']}", use_container_width=True):
-                            st.session_state.confirm_delete_row = None
-                            st.rerun()
-                else:
-                    if st.button("🗑️ Delete", key=f"btn_del_{order['row']}", use_container_width=True):
-                        st.session_state.confirm_delete_row = order["row"]
-                        st.rerun()
-
-            # ── Inline Edit Form ──────────────────────────────────────────
-            if st.session_state.editing_row == order["row"]:
-                st.divider()
-                st.markdown("#### ✏️ Edit Order")
-
-                ec1, ec2 = st.columns(2)
-                with ec1:
-                    edit_customer = st.text_input("Customer Name", value=order["customer"], key=f"edit_name_{order['row']}")
-                    try:
-                        d, m, y = order["date"].split("/")
-                        parsed_date = date(int(y), int(m), int(d))
-                    except Exception:
-                        parsed_date = date.today()
-                    edit_date = _date_input_dmy("Date", value=parsed_date, key=f"edit_date_{order['row']}")
-
-                with ec2:
-                    edit_phone = st.text_input("Phone", value=order["phone"], key=f"edit_phone_{order['row']}")
-                    method_keys = list(PAYMENT_METHODS.keys())
-                    method_values = list(PAYMENT_METHODS.values())
-                    current_idx = method_values.index(order["payment_method"]) if order["payment_method"] in method_values else 0
-                    edit_payment = st.selectbox(
-                        "Payment Method",
-                        options=method_keys,
-                        index=current_idx,
-                        format_func=lambda x: PAYMENT_METHODS[x],
-                        key=f"edit_payment_{order['row']}"
-                    )
-
-                st.markdown("**Products**")
-                edit_products = {}
-                for pi, product in enumerate(PRODUCTS):
-                    prefix = product["column_prefix"]
-                    current_qty = order["products"].get(f"{prefix}_qty", 0)
-                    current_price = order["products"].get(f"{prefix}_price", 0.0)
-
-                    pc1, pc2, pc3 = st.columns([3, 1, 1.5])
-                    with pc1:
-                        st.markdown(f"**{product['hebrew']}** _{product['name']}_")
-                    with pc2:
-                        edit_products[f"{prefix}_qty"] = st.number_input(
-                            "Qty", min_value=0, value=current_qty, step=1,
-                            key=f"edit_{prefix}_qty_{order['row']}", label_visibility="collapsed"
-                        )
-                    with pc3:
-                        edit_products[f"{prefix}_price"] = st.number_input(
-                            "Price", min_value=0.0, value=current_price, step=0.5, format="%.2f",
-                            key=f"edit_{prefix}_price_{order['row']}", label_visibility="collapsed"
-                        )
-
-                new_total = sum(
-                    (edit_products.get(f"{p['column_prefix']}_qty") or 0) *
-                    (edit_products.get(f"{p['column_prefix']}_price") or 0.0)
-                    for p in PRODUCTS
-                )
-
-                # Dough type (only relevant if order has Neapolitan in the new edit)
-                has_nean_edit = (
-                    (edit_products.get("neapolitan_kit_qty") or 0) > 0
-                    or (edit_products.get("neapolitan_dough_qty") or 0) > 0
-                )
-                edit_dough_type = order["dough_type"]
-                edit_bake_date_str = order.get("bake_date") or ""
-                if has_nean_edit:
-                    dough_options = ["", "fresh", "frozen"]
-                    try:
-                        dt_idx = dough_options.index(order["dough_type"])
-                    except ValueError:
-                        dt_idx = 0
-                    edit_dough_type = st.radio(
-                        "🍞 Neapolitan dough type",
-                        options=dough_options,
-                        index=dt_idx,
-                        format_func=lambda x: {"": "❓ Not specified", "fresh": "🌿 Fresh", "frozen": "❄️ Frozen"}.get(x, x),
-                        horizontal=True,
-                        key=f"edit_dough_{order['row']}",
-                    )
-
-                    try:
-                        d, m, y = (order.get("bake_date") or order["date"]).split("/")
-                        current_bake_date = date(int(y), int(m), int(d))
-                    except Exception:
-                        current_bake_date = edit_date if isinstance(edit_date, date) else date.today()
-                    edit_bake_date = _date_input_dmy(
-                        "🍞 Bake date (when customer plans to bake)",
-                        value=current_bake_date,
-                        key=f"edit_bake_{order['row']}",
-                    )
-                    edit_bake_date_str = edit_bake_date.strftime("%d/%m/%Y")
-
-                st.markdown(f"**New Total: ₪{new_total:.2f}**")
-
-                if st.button("💾 Save Changes", key=f"save_{order['row']}", type="primary"):
-                    if update_order(order["row"], edit_customer, edit_phone, edit_date, PAYMENT_METHODS[edit_payment], edit_products):
-                        if has_nean_edit and edit_dough_type != order["dough_type"]:
-                            update_dough_type(order["row"], edit_dough_type)
-                        if has_nean_edit and edit_bake_date_str != (order.get("bake_date") or ""):
-                            update_bake_date(order["row"], edit_bake_date_str)
-                        st.success("✅ Order updated!")
-                        st.session_state.editing_row = None
-                        st.rerun()
-                st.divider()
-
-with tab1:
-    st.subheader("Orders Awaiting Payment")
-    st.caption("These orders have been entered but payment has not been received yet.")
-    render_order_table(not_paid, allow_payment_update=True)
-
-with tab2:
-    st.subheader("Paid Orders Without Invoice")
-    st.caption("Payment received but no invoice has been created yet. Tick the orders you want to invoice, then click the button at the top.")
-
-    # Show results from the last bulk run (if any)
-    if "bulk_invoice_results" in st.session_state:
-        results = st.session_state.pop("bulk_invoice_results")
-        if results["successes"]:
-            st.success(f"✅ Created {results['successes']} invoice{'s' if results['successes'] != 1 else ''}")
-        if results["failures"]:
-            st.error(f"❌ {len(results['failures'])} failed:")
-            for row_num, msg in results["failures"]:
-                label = f"Row {row_num}" if row_num else "—"
-                st.write(f"- {label}: {msg}")
-
-    # Drop selections that are no longer in this tab's filter (e.g. orders already invoiced)
-    visible_rows = {o["row"] for o in paid_no_invoice}
-    st.session_state.selected_invoices &= visible_rows
-    n_selected = len(st.session_state.selected_invoices)
-
-    if paid_no_invoice:
+if invoiceable:
+    with st.container(border=True):
+        st.markdown(
+            f"**🧾 {len(invoiceable)} order(s) awaiting an invoice** — "
+            "tick them on the cards below, then:"
+        )
         bulk_c1, bulk_c2, bulk_c3 = st.columns([2, 1, 1])
         with bulk_c1:
             btn_label = (
                 f"🧾 Create {n_selected} invoice{'s' if n_selected != 1 else ''}"
-                if n_selected else "🧾 Create invoices (select orders first)"
+                if n_selected else "🧾 Create invoices (tick orders first)"
             )
             if st.button(btn_label, type="primary", disabled=(n_selected == 0), use_container_width=True):
                 with st.spinner(f"Creating {n_selected} invoice{'s' if n_selected != 1 else ''}…"):
@@ -849,25 +657,22 @@ with tab2:
                     results = bulk_create_invoices(selected_rows)
                 st.session_state.bulk_invoice_results = results
                 st.session_state.selected_invoices -= set(selected_rows)
-                st.session_state.return_to_invoice_tab = True
                 st.rerun()
         with bulk_c2:
-            if st.button(f"☑️ Select all ({len(paid_no_invoice)})", use_container_width=True):
-                st.session_state.selected_invoices |= visible_rows
-                st.session_state.return_to_invoice_tab = True
+            if st.button(f"☑️ Select all ({len(invoiceable)})", use_container_width=True):
+                st.session_state.selected_invoices |= invoiceable_rows
                 st.rerun()
         with bulk_c3:
             if st.button("Clear selection", use_container_width=True, disabled=(n_selected == 0)):
-                st.session_state.selected_invoices -= visible_rows
-                st.session_state.return_to_invoice_tab = True
+                st.session_state.selected_invoices -= invoiceable_rows
                 st.rerun()
-        st.divider()
+    st.divider()
 
-    render_order_table(paid_no_invoice, allow_invoice_trigger=True)
-
-with tab3:
-    st.subheader("📦 Pickup Queue")
-    st.caption("All orders not yet picked up — paid or not. Mark each one as picked up when the customer collects it.")
+with st.container():
+    st.caption(
+        "Everything still open — **pay · invoice · pickup** all live on each card "
+        "below, grouped by pickup day. Use the sidebar filters to narrow the list."
+    )
 
     # ── This Week's Kits summary ──────────────────────────────────────────
     # Counts kits + cheese-only orders for the next 7 days (today included).
@@ -1047,8 +852,8 @@ with tab3:
                         st.markdown(f"- **{o['customer']}** — {summary}")
         st.divider()
 
-    if not pickup_queue and not recently_picked:
-        st.success("✅ All caught up — nothing pending pickup!")
+    if not active_orders and not recently_picked:
+        st.success("✅ All caught up — nothing open!")
     else:
         # ── Order card renderer (shared across all sections) ──────────────
         def _render_order_card(order, banner_color=None, banner_text=None):
@@ -1079,6 +884,18 @@ with tab3:
                 with col3:
                     st.markdown(f"{payment_icon} **Payment**")
                     st.caption(order["payment_method"] or "—")
+                    # Take payment inline while the order is still unpaid
+                    if not paid:
+                        new_method = st.selectbox(
+                            "Mark as paid",
+                            options=["—", "Bit", "Paybox", "מזומן"],
+                            key=f"pay_{order['row']}",
+                            label_visibility="collapsed",
+                        )
+                        if new_method != "—":
+                            if st.button("💰 Mark Paid", key=f"btn_pay_{order['row']}", use_container_width=True):
+                                if update_payment_method(order["row"], new_method):
+                                    _pickup_rerun()
 
                 with col4:
                     # Primary action: pickup toggle
@@ -1090,6 +907,21 @@ with tab3:
                         if st.button("✅ Mark as Picked Up", key=f"pick_{order['row']}", use_container_width=True, type="primary"):
                             if update_pickup_status(order["row"], True):
                                 _pickup_rerun()
+
+                    # Invoice: link to an existing one, or tick for bulk creation
+                    if order["invoice_url"]:
+                        st.link_button("📄 View Invoice", order["invoice_url"], use_container_width=True)
+                    elif _needs_invoice(order):
+                        is_selected = order["row"] in st.session_state.selected_invoices
+                        new_selected = st.checkbox(
+                            "🧾 Select for invoice",
+                            value=is_selected,
+                            key=f"sel_inv_{order['row']}",
+                        )
+                        if new_selected and not is_selected:
+                            st.session_state.selected_invoices.add(order["row"])
+                        elif not new_selected and is_selected:
+                            st.session_state.selected_invoices.discard(order["row"])
 
                     # Date editor
                     try:
