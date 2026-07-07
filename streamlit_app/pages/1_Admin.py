@@ -607,15 +607,22 @@ if only_needs_invoice:
     active_orders = [o for o in active_orders if _needs_invoice(o)]
 
 active_orders.sort(key=lambda o: _parse_date(o["date"]))
-overdue_orders = [o for o in active_orders if _parse_date(o["date"]) < today_start]
-today_pickups = [o for o in active_orders if today_start <= _parse_date(o["date"]) < tomorrow_start]
-upcoming_pickups = [o for o in active_orders if _parse_date(o["date"]) >= tomorrow_start]
+
+# Two separate axes so an already-collected order never resurfaces as "overdue":
+#   • pickup_pending      → not collected yet (grouped by pickup day below)
+#   • picked_needs_action → already collected, but still needs an invoice/payment
+pickup_pending = [o for o in active_orders if not o["picked_up"]]
+picked_needs_action = [o for o in active_orders if o["picked_up"]]
+
+overdue_orders = [o for o in pickup_pending if _parse_date(o["date"]) < today_start]
+today_pickups = [o for o in pickup_pending if today_start <= _parse_date(o["date"]) < tomorrow_start]
+upcoming_pickups = [o for o in pickup_pending if _parse_date(o["date"]) >= tomorrow_start]
 
 # Top-of-page counts so the owner sees outstanding work at a glance.
 _n_pay = sum(1 for o in active_orders if not _is_paid(o["payment_method"]))
 _n_inv = sum(1 for o in active_orders if _needs_invoice(o))
 mcol1, mcol2, mcol3, mcol4 = st.columns(4)
-mcol1.metric("📦 To pick up", len(active_orders))
+mcol1.metric("📦 To pick up", len(pickup_pending))
 mcol2.metric("🔴 Overdue", len(overdue_orders))
 mcol3.metric("💰 Need payment", _n_pay)
 mcol4.metric("🧾 Need invoice", _n_inv)
@@ -1116,6 +1123,16 @@ with st.container():
             st.markdown(f"### 🟢 Upcoming ({len(upcoming_pickups)})")
             for order in upcoming_pickups:
                 _render_order_card(order)
+
+        # ── Picked up but still needs an invoice / payment ────────────────
+        # Already collected, so NOT part of the pickup queue and never flagged
+        # as overdue — just an open billing/payment follow-up.
+        if picked_needs_action:
+            st.divider()
+            st.markdown(f"### ✅ נאסף · נותרה חשבונית/תשלום ({len(picked_needs_action)})")
+            st.caption("הזמנות שכבר נמסרו ללקוח אך עדיין חסרה להן חשבונית או תשלום.")
+            for order in picked_needs_action:
+                _render_order_card(order, banner_color="green", banner_text="✅ נאסף — נותרה פעולה")
 
         # ── Recently picked up (sidebar toggle — for undoing mistakes) ────
         if show_picked_up and recently_picked:
