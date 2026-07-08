@@ -25,7 +25,7 @@ COMMUNITY_HEADERS = [
     "date_fetched", "group_url", "post_url", "post_author",
     "post_date", "post_text", "comments", "answer",
     "score", "score_reason", "tags", "question_type", "status", "posted_date", "image_url",
-    "image_description", "post_type",
+    "image_description", "post_type", "my_answer",
 ]
 
 
