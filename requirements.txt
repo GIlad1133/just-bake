@@ -11,7 +11,7 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 
 # Community monitoring
-apify-client>=1.7.0
+apify-client>=1.7.0,<3   # 3.x changed .call() to return a Run object (not a dict) — breaks fetch_posts
 anthropic>=0.40.0
 
 # Testing (development only)
