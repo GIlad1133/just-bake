@@ -174,23 +174,37 @@ with tab1:
     ]
     pending.sort(key=lambda x: int(x.get("score") or 0), reverse=True)
 
-    if not pending:
-        st.success("✅ אין פוסטים ממתינים")
-    else:
-        st.caption(f"{len(pending)} פוסטים ממתינים")
+    # ── Tinder-style: one card at a time ──────────────────────────────────
+    if "later_set" not in st.session_state:
+        st.session_state.later_set = set()
 
-    for post in pending:
+    queue = [p for p in pending if p.get("post_url") not in st.session_state.later_set]
+
+    if not pending:
+        st.success("✅ אין פוסטים חדשים לענות עליהם")
+    elif not queue:
+        st.success("✅ עברת על כל הכרטיסים!")
+        if st.button("🔄 אפס 'אחר כך'"):
+            st.session_state.later_set.clear()
+            st.rerun()
+    else:
+        done = len(pending) - len(queue)
+        st.caption(f"נשארו {len(queue)} · עברת על {done}")
+        st.progress(done / len(pending))
+
+        post = queue[0]  # top card = highest score
         score = int(post.get("score") or 0)
         dot = "🔴" if score >= 9 else "🟠" if score >= 7 else "🟡"
         url_key = post.get("post_url", "")
         draft_key = f"draft_{url_key}"
+        q_label = TYPE_LABELS.get(post.get("question_type", ""), post.get("question_type", ""))
 
         with st.container(border=True):
-            col1, col2 = st.columns([5, 1])
-            with col1:
-                st.markdown(f"{dot} **{score}/10** · {post.get('post_author', '')} · {post.get('post_date', '')[:10]}")
-                st.caption(post.get("score_reason", ""))
-            with col2:
+            c1, c2 = st.columns([5, 1])
+            with c1:
+                st.markdown(f"{dot} **{score}/10** · {q_label}")
+                st.caption(f"{post.get('post_author','')} · {post.get('post_date','')[:10]} — {post.get('score_reason','')}")
+            with c2:
                 st.markdown(f"[פייסבוק ↗]({url_key})")
 
             st.info(post.get("post_text", ""), icon=None)
@@ -201,40 +215,57 @@ with tab1:
                         if line.strip():
                             st.caption(f"• {line.strip()}")
 
-            # Optional AI draft in your voice — only after you've taught it enough
-            if len(saved_answers) >= VOICE_THRESHOLD:
-                if st.button("✍️ טיוטה בסגנון שלי", key=f"voice_{url_key}"):
-                    anthropic_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
-                    if not anthropic_key:
-                        st.error("חסר ANTHROPIC_API_KEY ב-secrets")
-                    else:
-                        with st.spinner("כותב בסגנון שלך..."):
-                            st.session_state[draft_key] = draft_in_my_voice(
-                                post, saved_answers, anthropic.Anthropic(api_key=anthropic_key)
-                            )
-                        st.rerun()
+            st.divider()
 
-            my_text = st.text_area(
-                "התשובה שלך:",
-                value=st.session_state.get(draft_key, ""),
-                height=150,
-                key=f"my_{url_key}",
-                placeholder="כתוב כאן בסגנון שלך...",
-            )
+            if st.session_state.get("answering_url") == url_key:
+                # ── Answer stage ──
+                if len(saved_answers) >= VOICE_THRESHOLD:
+                    if st.button("✍️ טיוטה בסגנון שלי", key=f"voice_{url_key}"):
+                        anthropic_key = st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+                        if not anthropic_key:
+                            st.error("חסר ANTHROPIC_API_KEY ב-secrets")
+                        else:
+                            with st.spinner("כותב בסגנון שלך..."):
+                                st.session_state[draft_key] = draft_in_my_voice(
+                                    post, saved_answers, anthropic.Anthropic(api_key=anthropic_key)
+                                )
+                            st.rerun()
 
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("✅ שמור ופרסמתי", key=f"save_{url_key}", use_container_width=True, type="primary"):
-                    if my_text.strip():
-                        save_my_answer(url_key, my_text.strip())
-                        st.success("נשמר! ✅")
+                my_text = st.text_area(
+                    "התשובה שלך:",
+                    value=st.session_state.get(draft_key, ""),
+                    height=160,
+                    key=f"my_{url_key}",
+                    placeholder="כתוב כאן בסגנון שלך...",
+                )
+                s1, s2 = st.columns(2)
+                with s1:
+                    if st.button("✅ שמור ופרסמתי", key=f"save_{url_key}", use_container_width=True, type="primary"):
+                        if my_text.strip():
+                            save_my_answer(url_key, my_text.strip())
+                            st.session_state.answering_url = None
+                            st.rerun()
+                        else:
+                            st.warning("כתוב תשובה קודם")
+                with s2:
+                    if st.button("↩️ חזרה", key=f"back_{url_key}", use_container_width=True):
+                        st.session_state.answering_url = None
                         st.rerun()
-                    else:
-                        st.warning("כתוב תשובה קודם")
-            with b2:
-                if st.button("⏭️ דלג", key=f"skip_{url_key}", use_container_width=True):
-                    update_status(url_key, "skipped")
-                    st.rerun()
+            else:
+                # ── Decide stage (the "swipe") ──
+                d1, d2, d3 = st.columns(3)
+                with d1:
+                    if st.button("✍️ אענה", key=f"ans_{url_key}", use_container_width=True, type="primary"):
+                        st.session_state.answering_url = url_key
+                        st.rerun()
+                with d2:
+                    if st.button("🕒 אחר כך", key=f"later_{url_key}", use_container_width=True):
+                        st.session_state.later_set.add(url_key)
+                        st.rerun()
+                with d3:
+                    if st.button("👎 לא רלוונטי", key=f"skip_{url_key}", use_container_width=True):
+                        update_status(url_key, "skipped")
+                        st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2 — KNOWLEDGE BASE
