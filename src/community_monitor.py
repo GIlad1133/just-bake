@@ -8,7 +8,7 @@ import os
 import json
 import logging
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
@@ -27,6 +27,8 @@ COMMUNITY_HEADERS = [
     "score", "score_reason", "tags", "question_type", "status", "posted_date", "image_url",
     "image_description", "post_type", "my_answer",
 ]
+
+RECENT_DAYS = 3  # only score posts from roughly the last couple of days
 
 
 # ─── Sheets ───────────────────────────────────────────────────────────────────
@@ -66,17 +68,16 @@ def get_known_posts(ws) -> dict:
 
 # ─── Apify ────────────────────────────────────────────────────────────────────
 
-def fetch_posts(group_urls: list, apify_token: str, posts_per_group: int = 25) -> list:
+def fetch_posts(group_urls: list, apify_token: str, posts_per_group: int = 10) -> list:
     client = ApifyClient(apify_token)
     run_input = {
         "startUrls": [{"url": url} for url in group_urls],
         "resultsLimit": posts_per_group,
-        "maxComments": 10,
+        "maxComments": 3,
         "sortOrder": "RECENT_POSTS",
-        "proxyConfiguration": {
-            "useApifyProxy": True,
-            "apifyProxyGroups": ["RESIDENTIAL"],
-        },
+        # Datacenter proxy (default) is far cheaper than residential — keeps runs
+        # inside the Apify free tier. Switch back to RESIDENTIAL if FB blocks it.
+        "proxyConfiguration": {"useApifyProxy": True},
     }
     log.info(f"Fetching posts from {len(group_urls)} groups...")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
@@ -223,6 +224,15 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def _is_recent(post: dict) -> bool:
+    """Keep only posts from the last RECENT_DAYS days (unparseable dates kept)."""
+    raw = str(post.get("time", ""))[:10]
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d") >= datetime.now() - timedelta(days=RECENT_DAYS)
+    except ValueError:
+        return True
+
+
 def run_monitor():
     # Load env
     apify_token = os.getenv("APIFY_API_TOKEN")
@@ -250,6 +260,8 @@ def run_monitor():
 
     # Fetch posts
     posts = fetch_posts(monitoring_groups, apify_token)
+    posts = [p for p in posts if _is_recent(p)]
+    log.info(f"{len(posts)} posts within last {RECENT_DAYS} days")
     claude = anthropic.Anthropic(api_key=anthropic_key)
     saved = updated = 0
 

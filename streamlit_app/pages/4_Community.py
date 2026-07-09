@@ -7,7 +7,7 @@ import streamlit as st
 import os
 import sys
 import anthropic
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -147,6 +147,14 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     CORE_TYPES = {"technique", "recipe_help", "ingredient", "where_to_buy"}
     VOICE_THRESHOLD = 10  # once you've saved this many, the AI can draft in your style
+    RECENT_DAYS = 2       # only show the last day or two — no old backlog
+
+    def _recent(p):
+        raw = (p.get("post_date") or "")[:10]
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date() >= date.today() - timedelta(days=RECENT_DAYS)
+        except ValueError:
+            return False
 
     fc1, fc2 = st.columns([1, 1])
     with fc1:
@@ -162,6 +170,7 @@ with tab1:
         if p.get("status") == "pending"
         and int(p.get("score") or 0) >= min_score
         and (not core_only or p.get("question_type") in CORE_TYPES)
+        and _recent(p)
     ]
     pending.sort(key=lambda x: int(x.get("score") or 0), reverse=True)
 
