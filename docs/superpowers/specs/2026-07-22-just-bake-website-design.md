@@ -41,9 +41,9 @@ Chocolate calzone note: story copy says "שוקולד נמס"; "מילקה" appe
 the price/detail line. Sold separately: בצק + שוקולד מילקה — 25 ₪.
 
 ### Individual items (הרכבה עצמית)
-כדור נאפוליטני 12 ₪ · כדור כוסמין 17 ₪ · כדור ללא גלוטן 22 ₪ (unverified since
-GF price change — flagged for Gilad before publish) · כדור מוצרלה 12 ₪ ·
-רוטב עגבניות 25 ₪ · רוטב לבן 50 ₪ · קמח לפתיחה 5 ₪
+כדור נאפוליטני 12 ₪ · כדור כוסמין 17 ₪ · כדור ללא גלוטן 22 ₪ (5 כדורים — 100 ₪;
+confirmed by Gilad 22/07/2026) · כדור מוצרלה 12 ₪ · רוטב עגבניות 25 ₪ ·
+רוטב לבן 50 ₪ · קמח לפתיחה 5 ₪
 
 ### Gluten-free section
 - Personal story: Gilad's son was diagnosed with celiac (approved for public use).
@@ -105,10 +105,19 @@ GF price change — flagged for Gilad before publish) · כדור מוצרלה 1
 
 ## Photos
 
-Real photos preferred (Gilad's choice). Folder not yet provided — variants build
-with existing repo photos (`calzone_real_*.png`, `workshop_flyer_pizza.jpg`) and
-clearly-marked `<img>` slots with descriptive alt text so swapping in real photos
-is a file-drop, not a redesign. Images referenced relatively from `website/`.
+Source: `JustBake-photo-videos/פשוט לאפות - תמונות וסרטונים/` — 271 files,
+2.6 GB, photos + videos with UUID names. Handling:
+
+1. **Gitignore the source folder** — 2.6 GB of raw media never enters git.
+2. **Curation pass** (before variants start): view the photos, shortlist the
+   best per section — hero, kits/products, GF, chocolate calzone, workshops,
+   baking-action shots. Prefer sharp, well-lit, appetite-driven shots.
+3. **Optimize**: copy shortlisted photos to `website/assets/` with descriptive
+   names (e.g. `hero-pizza-oven.jpg`), resized to max 1600px wide, JPEG ~80
+   quality. Only these optimized copies are committed.
+4. Variants reference only `website/assets/` images, relatively.
+5. Videos are out of scope for v1 (a muted hero video loop is a possible later
+   upgrade — noted, not built).
 
 ## Verification checklist (winner must pass)
 
@@ -117,7 +126,7 @@ is a file-drop, not a redesign. Images referenced relatively from `website/`.
 - All WhatsApp links: correct number (972525800797) and URL-encoded prefill.
 - All prices match this spec exactly.
 - Copy passes the 4 copy rules.
-- Page loads with images missing (graceful alt text) — photos may be swapped.
+- All images load from `website/assets/`; raw media folder is gitignored.
 
 ## Out of scope
 
