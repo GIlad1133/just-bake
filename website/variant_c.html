@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>פשוט לאפות — בצק נאפוליטני קפוא, מוכן לאפייה בבית</title>
+<meta name="description" content="בצק נאפוליטני אמיתי, קפוא, מוכן לאפייה בבית. מארזים עם גבינות ורוטב, גרסת כוסמין וללא גלוטן. הזמנות בוואטסאפ.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#E8432D;
+  --accent-dark:#C93520;
+  --ink:#191512;
+  --ink-soft:#5C554E;
+  --line:#ECE7E1;
+  --bg:#FFFFFF;
+  --bg-warm:#FAF7F3;
+  --radius:18px;
+  --shadow-sm:0 1px 3px rgba(25,21,18,.06);
+  --shadow-md:0 10px 30px -12px rgba(25,21,18,.18);
+  --shadow-lg:0 24px 60px -20px rgba(25,21,18,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Heebo',sans-serif;
+  color:var(--ink);
+  background:var(--bg);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+img{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid transparent;
+  transition:border-color .3s, box-shadow .3s;
+}
+header.scrolled{border-bottom-color:var(--line);box-shadow:var(--shadow-sm)}
+.header-in{
+  display:flex;align-items:center;justify-content:space-between;
+  height:62px;
+}
+.logo{font-weight:900;font-size:1.25rem;letter-spacing:-.01em}
+.logo span{color:var(--accent)}
+.header-cta{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--accent);color:#fff;
+  font-weight:700;font-size:.95rem;
+  padding:9px 18px;border-radius:999px;
+  transition:background .2s, transform .2s;
+}
+.header-cta:hover{background:var(--accent-dark);transform:translateY(-1px)}
+.header-cta svg{width:18px;height:18px;flex-shrink:0}
+
+/* ---------- hero ---------- */
+.hero{
+  padding:44px 0 56px;
+  background:
+    radial-gradient(58% 75% at 12% 8%, rgba(232,67,45,.07), transparent 70%),
+    radial-gradient(45% 60% at 88% 90%, rgba(232,67,45,.05), transparent 70%);
+}
+.hero-grid{display:grid;gap:32px;align-items:center}
+.hero-kicker{
+  display:inline-block;
+  color:var(--accent);font-weight:700;font-size:.9rem;
+  letter-spacing:.06em;
+  margin-bottom:14px;
+}
+.hero h1{
+  font-weight:900;
+  font-size:clamp(2.1rem,7.5vw,3.6rem);
+  line-height:1.15;
+  letter-spacing:-.02em;
+  margin-bottom:16px;
+}
+.hero h1 em{font-style:normal;color:var(--accent)}
+.hero p.lead{
+  font-size:clamp(1.05rem,3.5vw,1.25rem);
+  color:var(--ink-soft);
+  max-width:34ch;
+  margin-bottom:26px;
+}
+.btn-wa{
+  display:inline-flex;align-items:center;gap:10px;
+  background:var(--accent);color:#fff;
+  font-weight:800;font-size:1.1rem;
+  padding:15px 30px;border-radius:999px;
+  box-shadow:0 8px 24px -8px rgba(232,67,45,.55);
+  transition:transform .2s, box-shadow .2s, background .2s;
+}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 14px 32px -8px rgba(232,67,45,.6);background:var(--accent-dark)}
+.btn-wa svg{width:22px;height:22px}
+.hero-note{margin-top:14px;font-size:.9rem;color:var(--ink-soft)}
+.hero-img{
+  position:relative;
+  border-radius:24px;
+  overflow:hidden;
+  box-shadow:var(--shadow-lg);
+}
+.hero-img img{width:100%;height:100%;object-fit:cover;aspect-ratio:4/3}
+.hero-badge{
+  position:absolute;bottom:14px;right:14px;
+  background:rgba(255,255,255,.95);
+  border-radius:12px;
+  padding:8px 14px;
+  font-weight:700;font-size:.85rem;
+  box-shadow:var(--shadow-md);
+}
+@media(min-width:820px){
+  .hero{padding:64px 0 80px}
+  .hero-grid{grid-template-columns:1fr 1fr;gap:56px}
+}
+
+/* ---------- section base ---------- */
+section{padding:60px 0}
+@media(min-width:820px){section{padding:88px 0}}
+.sec-head{margin-bottom:34px}
+.sec-head .eyebrow{
+  color:var(--accent);font-weight:700;font-size:.85rem;letter-spacing:.08em;
+  display:block;margin-bottom:6px;
+}
+.sec-head h2{
+  font-weight:900;font-size:clamp(1.65rem,5.5vw,2.4rem);
+  letter-spacing:-.015em;line-height:1.2;
+}
+.sec-head p{color:var(--ink-soft);margin-top:10px;max-width:52ch;font-size:1.02rem}
+
+/* ---------- kits ---------- */
+.kits{background:var(--bg-warm)}
+.kit-grid{display:grid;gap:16px}
+@media(min-width:640px){.kit-grid{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:1000px){.kit-grid{grid-template-columns:repeat(3,1fr)}}
+.kit-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:26px 24px;
+  display:flex;flex-direction:column;
+  position:relative;
+  transition:transform .25s, box-shadow .25s;
+}
+.kit-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.kit-card.featured{border-color:var(--accent);border-width:2px}
+.kit-flag{
+  position:absolute;top:-12px;right:20px;
+  background:var(--accent);color:#fff;
+  font-size:.75rem;font-weight:700;
+  padding:3px 12px;border-radius:999px;
+}
+.kit-name{font-weight:800;font-size:1.2rem;margin-bottom:4px}
+.kit-desc{color:var(--ink-soft);font-size:.95rem;flex:1}
+.kit-price{
+  margin-top:18px;
+  display:flex;align-items:baseline;gap:8px;
+}
+.kit-price .num{font-weight:900;font-size:2rem;letter-spacing:-.02em;color:var(--accent)}
+.kit-price .cur{font-weight:700;font-size:1.1rem;color:var(--accent)}
+.kit-price .old{color:var(--ink-soft);text-decoration:line-through;font-size:1rem}
+.kit-price .txt{font-weight:800;font-size:1.25rem}
+.kit-sub{font-size:.85rem;color:var(--ink-soft);margin-top:4px}
+.kit-photos{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.kit-photos img{
+  border-radius:14px;aspect-ratio:1/1;object-fit:cover;width:100%;
+  box-shadow:var(--shadow-sm);
+}
+@media(min-width:820px){.kit-photos img{aspect-ratio:4/3}}
+.calzone-line{
+  margin-top:20px;
+  background:#fff;border:1px dashed var(--accent);
+  border-radius:var(--radius);
+  padding:16px 20px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  font-size:.98rem;
+}
+.calzone-line b{font-weight:800}
+.calzone-line .p{font-weight:900;color:var(--accent);font-size:1.15rem;white-space:nowrap}
+
+/* ---------- build your own ---------- */
+.build-list{
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:#fff;
+}
+.build-row{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:15px 20px;
+  border-bottom:1px solid var(--line);
+  transition:background .15s;
+}
+.build-row:last-child{border-bottom:none}
+.build-row:hover{background:var(--bg-warm)}
+.build-row .n{font-weight:600}
+.build-row .n small{display:block;font-weight:400;color:var(--ink-soft);font-size:.85rem}
+.build-row .p{font-weight:900;font-size:1.15rem;white-space:nowrap;color:var(--ink)}
+.build-row .p .s{font-size:.85rem;font-weight:600;color:var(--ink-soft)}
+.build-grid{display:grid;gap:28px;align-items:start}
+@media(min-width:900px){.build-grid{grid-template-columns:1.15fr .85fr}}
+.build-img{border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-md)}
+.build-img img{aspect-ratio:4/5;object-fit:cover;width:100%}
+@media(max-width:899px){.build-img img{aspect-ratio:16/10}}
+
+/* ---------- gluten free ---------- */
+.gf{background:var(--bg-warm)}
+.gf-grid{display:grid;gap:32px;align-items:center}
+@media(min-width:900px){.gf-grid{grid-template-columns:.9fr 1.1fr}}
+.gf-img{border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-md)}
+.gf-img img{aspect-ratio:1/1;object-fit:cover;width:100%}
+.gf-story{
+  font-size:1.1rem;
+  margin-bottom:20px;
+}
+.gf-points{list-style:none;display:grid;gap:12px}
+.gf-points li{
+  display:flex;gap:12px;align-items:flex-start;
+  background:#fff;border:1px solid var(--line);border-radius:14px;
+  padding:14px 16px;font-size:.98rem;
+}
+.gf-points .dot{
+  width:8px;height:8px;border-radius:50%;background:var(--accent);
+  margin-top:9px;flex-shrink:0;
+}
+
+/* ---------- workshops ---------- */
+.ws-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px}
+.ws-strip img{border-radius:14px;aspect-ratio:3/4;object-fit:cover;width:100%;box-shadow:var(--shadow-sm);transition:transform .3s}
+.ws-strip img:hover{transform:scale(1.02)}
+@media(min-width:820px){.ws-strip{gap:16px}}
+.ws-copy{max-width:56ch;color:var(--ink-soft);font-size:1.05rem;margin-bottom:22px}
+.btn-outline{
+  display:inline-flex;align-items:center;gap:10px;
+  border:2px solid var(--ink);color:var(--ink);
+  font-weight:800;font-size:1.02rem;
+  padding:12px 26px;border-radius:999px;
+  transition:background .2s, color .2s, border-color .2s, transform .2s;
+}
+.btn-outline:hover{background:var(--accent);border-color:var(--accent);color:#fff;transform:translateY(-2px)}
+.btn-outline svg{width:20px;height:20px}
+
+/* ---------- how it works ---------- */
+.how{background:var(--bg-warm)}
+.steps{display:grid;gap:16px;counter-reset:step}
+@media(min-width:820px){.steps{grid-template-columns:repeat(3,1fr)}}
+.step{
+  background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  padding:24px;counter-increment:step;position:relative;
+}
+.step::before{
+  content:counter(step);
+  display:inline-flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;
+  background:var(--accent);color:#fff;font-weight:900;font-size:1.1rem;
+  margin-bottom:14px;
+}
+.step h3{font-weight:800;font-size:1.1rem;margin-bottom:6px}
+.step p{color:var(--ink-soft);font-size:.95rem}
+.logi{
+  margin-top:28px;
+  background:#fff;border:1px solid var(--line);border-radius:var(--radius);
+  padding:8px 24px;
+}
+.logi ul{list-style:none}
+.logi li{
+  display:flex;gap:12px;align-items:flex-start;
+  padding:13px 0;border-bottom:1px solid var(--line);
+  font-size:.98rem;
+}
+.logi li:last-child{border-bottom:none}
+.logi .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:9px;flex-shrink:0}
+
+/* ---------- final cta ---------- */
+.final{padding:70px 0 90px;text-align:center}
+.final h2{font-weight:900;font-size:clamp(1.7rem,6vw,2.5rem);letter-spacing:-.015em;margin-bottom:10px}
+.final p{color:var(--ink-soft);margin-bottom:26px;font-size:1.05rem}
+
+/* ---------- footer ---------- */
+footer{
+  border-top:1px solid var(--line);
+  padding:28px 0 110px;
+  color:var(--ink-soft);font-size:.9rem;
+}
+.foot-in{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;justify-content:space-between}
+footer b{color:var(--ink)}
+@media(min-width:820px){footer{padding-bottom:36px}}
+
+/* ---------- floating wa ---------- */
+.fab{
+  position:fixed;bottom:18px;left:18px;z-index:200;
+  display:inline-flex;align-items:center;gap:10px;
+  background:#25D366;color:#fff;
+  font-weight:800;font-size:1rem;
+  padding:14px 22px;border-radius:999px;
+  box-shadow:0 10px 30px -6px rgba(37,211,102,.55);
+  transition:transform .2s, box-shadow .2s;
+}
+.fab:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 16px 36px -6px rgba(37,211,102,.6)}
+.fab svg{width:22px;height:22px}
+
+/* ---------- reveal ---------- */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease, transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<header id="hdr">
+  <div class="wrap header-in">
+    <div class="logo">פשוט <span>לאפות</span></div>
+    <a class="header-cta" href="https://wa.me/972525800797?text=%D7%94%D7%99%D7%99%2C%20%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%94%D7%96%D7%9E%D7%99%D7%9F%20%D7%9E%D7%90%D7%A8%D7%96">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.2c-.2.6-1.2 1.1-1.7 1.2-.5 0-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5s.8 1.9.8 2c.1.1.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.4 1.8 2.2 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.1z"/></svg>
+      להזמנה
+    </a>
+  </div>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-kicker">בצק נאפוליטני · תוצרת בית · פתח תקווה</span>
+      <h1>בצק נאפוליטני אמיתי, קפוא, <em>מוכן לאפייה בבית</em></h1>
+      <p class="lead">לישה והתפחה של 48 שעות כבר נעשו כאן. אתם רק פותחים ואופים.</p>
+      <a class="btn-wa" href="https://wa.me/972525800797?text=%D7%94%D7%99%D7%99%2C%20%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%94%D7%96%D7%9E%D7%99%D7%9F%20%D7%9E%D7%90%D7%A8%D7%96">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.2c-.2.6-1.2 1.1-1.7 1.2-.5 0-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5s.8 1.9.8 2c.1.1.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.4 1.8 2.2 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.1z"/></svg>
+        להזמנה בוואטסאפ
+      </a>
+      <p class="hero-note">מארזים מ־130 ₪ · איסוף מפתח תקווה</p>
+    </div>
+    <div class="hero-img reveal">
+      <img src="assets/hero-pizza.jpg" alt="פיצה נאפוליטנית אפויה עם מוצרלה, עגבניות שרי, זיתים ובזיליקום על קרש עץ">
+      <div class="hero-badge">נאפתה בבית מהבצק שלנו</div>
+    </div>
+  </div>
+</section>
+
+<!-- KITS -->
+<section class="kits" id="kits">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">מארזים</span>
+      <h2>בוחרים מארז, מפשירים, אופים</h2>
+      <p>כל מארז מגיע עם בצקים קפואים, גבינות ורוטב — כל מה שצריך לערב פיצות בבית.</p>
+    </div>
+    <div class="kit-grid">
+      <div class="kit-card reveal">
+        <div class="kit-name">ערכה נאפוליטנית</div>
+        <p class="kit-desc">5 בצקים + 5 גבינות + רוטב</p>
+        <div class="kit-price"><span class="num">130</span><span class="cur">₪</span></div>
+      </div>
+      <div class="kit-card reveal">
+        <div class="kit-name">ערכה כוסמין</div>
+        <p class="kit-desc">5 בצקים + 5 גבינות + רוטב</p>
+        <div class="kit-price"><span class="num">150</span><span class="cur">₪</span></div>
+        <div class="kit-sub">הזמנה יומיים מראש</div>
+      </div>
+      <div class="kit-card featured reveal">
+        <span class="kit-flag">מחיר השקה</span>
+        <div class="kit-name">ערכה ללא גלוטן</div>
+        <p class="kit-desc">5 בצקים + 5 גבינות + רוטב + קמח פתיחה ללא גלוטן</p>
+        <div class="kit-price"><span class="num">160</span><span class="cur">₪</span><span class="old">180 ₪</span></div>
+        <div class="kit-sub">הזמנה יומיים מראש</div>
+      </div>
+      <div class="kit-card reveal">
+        <div class="kit-name">מארז משודרג</div>
+        <p class="kit-desc">מארז נאפוליטני + קלצונה שוקולד — בצק שנסגר על שוקולד נמס ונאפה עד שהוא זהוב</p>
+        <div class="kit-price"><span class="num">150</span><span class="cur">₪</span></div>
+      </div>
+      <div class="kit-card reveal">
+        <div class="kit-name">שילוב בצקים</div>
+        <p class="kit-desc">רוצים לערבב במארז אחד? נאפוליטני, כוסמין, ללא גלוטן — מרכיבים יחד בוואטסאפ.</p>
+        <div class="kit-price"><span class="txt">מחיר לפי התאמה</span></div>
+      </div>
+      <div class="kit-card reveal" style="padding:0;overflow:hidden;border:none">
+        <img src="assets/kit-packed.jpg" alt="מארז פשוט לאפות — כדורי בצק, כדורי מוצרלה ורוטב עגבניות" style="width:100%;height:100%;object-fit:cover;min-height:220px">
+      </div>
+    </div>
+    <div class="calzone-line reveal">
+      <span><b>קלצונה גם בנפרד:</b> בצק + שוקולד מילקה</span>
+      <span class="p">25 ₪</span>
+    </div>
+    <div class="kit-photos reveal">
+      <img src="assets/kit-ingredients.jpg" alt="מרכיבי הערכה — בצקים, גבינות ורוטב עגבניות">
+      <img src="assets/kit-dough-containers.jpg" alt="כדורי בצק של פשוט לאפות עם מדבקת המותג">
+      <img src="assets/calzone-chocolate.jpg" alt="קלצונה שוקולד חתוכה, שוקולד נמס נמשך מהחיתוך">
+    </div>
+  </div>
+</section>
+
+<!-- BUILD YOUR OWN -->
+<section id="build">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">הרכבה עצמית</span>
+      <h2>מרכיבים לבד, לפי מה שצריך</h2>
+      <p>לא חייבים מארז — אפשר להזמין כל פריט בנפרד ולבנות בדיוק את הכמות שמתאימה לכם.</p>
+    </div>
+    <div class="build-grid">
+      <div class="build-list reveal">
+        <div class="build-row"><span class="n">כדור בצק נאפוליטני</span><span class="p">12 ₪</span></div>
+        <div class="build-row"><span class="n">כדור בצק כוסמין</span><span class="p">17 ₪</span></div>
+        <div class="build-row"><span class="n">כדור בצק ללא גלוטן<small>5 כדורים — 100 ₪</small></span><span class="p">22 ₪</span></div>
+        <div class="build-row"><span class="n">כדור מוצרלה</span><span class="p">12 ₪</span></div>
+        <div class="build-row"><span class="n">רוטב עגבניות</span><span class="p">25 ₪</span></div>
+        <div class="build-row"><span class="n">רוטב לבן</span><span class="p">50 ₪</span></div>
+        <div class="build-row"><span class="n">קמח לפתיחה</span><span class="p">5 ₪</span></div>
+      </div>
+      <div class="build-img reveal">
+        <img src="assets/dough-balls-tray.jpg" alt="כדורי בצק תפוחים בקופסה אחרי התפחה">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GLUTEN FREE -->
+<section class="gf" id="gf">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">ללא גלוטן</span>
+      <h2>הבצק שנולד בגלל הבן של גלעד</h2>
+    </div>
+    <div class="gf-grid">
+      <div class="gf-img reveal">
+        <img src="assets/gf-pizza.jpg" alt="פיצה ללא גלוטן עם מוצרלה ועגבניות שרי על מרדה">
+      </div>
+      <div>
+        <p class="gf-story reveal">לבן של גלעד יש צליאק — הבצק ללא גלוטן נולד בשבילו.</p>
+        <ul class="gf-points">
+          <li class="reveal"><span class="dot"></span><span>מוכן בהפרדה מלאה — כלים, משטחים וזמנים נפרדים.</span></li>
+          <li class="reveal"><span class="dot"></span><span>שתי גרסאות: עם עמילן חיטה ובלי עמילן חיטה.</span></li>
+          <li class="reveal"><span class="dot"></span><span>הזמנה יומיים מראש (גם כוסמין).</span></li>
+          <li class="reveal"><span class="dot"></span><span>אפשר לשלב במארז בצקים רגילים לשאר המשפחה — נארזים בנפרד.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WORKSHOPS -->
+<section id="workshops">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">סדנאות</span>
+      <h2>סדנת פיצה — ידיים בקמח</h2>
+    </div>
+    <div class="ws-strip reveal">
+      <img src="assets/workshop-hands-dough.jpg" alt="ידיים פותחות כדור בצק במגש קמח בסדנה">
+      <img src="assets/workshop-stretch.jpg" alt="מתיחת בצק נאפוליטני דק מול השולחן בסדנה">
+      <img src="assets/workshop-topping.jpg" alt="הרכבת תוספות על פיצה לבנה לפני האפייה בסדנה">
+    </div>
+    <p class="ws-copy reveal">פותחים בצק בקמח, מותחים אותו דק, מרכיבים תוספות ואופים — כל אחד יוצא עם פיצות שהכין לבד.</p>
+    <a class="btn-outline reveal" href="https://wa.me/972525800797?text=%D7%94%D7%99%D7%99%2C%20%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%94%D7%96%D7%9E%D7%99%D7%9F%20%D7%9E%D7%90%D7%A8%D7%96">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.2c-.2.6-1.2 1.1-1.7 1.2-.5 0-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5s.8 1.9.8 2c.1.1.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.4 1.8 2.2 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.1z"/></svg>
+      פרטים בוואטסאפ
+    </a>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="eyebrow">איך זה עובד</span>
+      <h2>שלושה שלבים עד פיצה</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <h3>מזמינים בוואטסאפ</h3>
+        <p>הזמנות בוואטסאפ בלבד — 052-5800797. בוחרים מארז או מרכיבים לבד.</p>
+      </div>
+      <div class="step reveal">
+        <h3>אוספים קפוא</h3>
+        <p>איסוף מרחוב נס ציונה 10, אם המושבות הותיקה, פתח תקווה — תיאום בוואטסאפ.</p>
+      </div>
+      <div class="step reveal">
+        <h3>מפשירים ואופים</h3>
+        <p>הבצקים מגיעים קפואים — מפשירים כמה שעות מראש, פותחים ואופים.</p>
+      </div>
+    </div>
+    <div class="logi reveal">
+      <ul>
+        <li><span class="dot"></span><span>אין מינימום הזמנה.</span></li>
+        <li><span class="dot"></span><span>משלוח להזמנות מרוכזות בלבד (בניין / קבוצה).</span></li>
+        <li><span class="dot"></span><span>ללא גלוטן וכוסמין — הזמנה יומיים מראש.</span></li>
+        <li><span class="dot"></span><span>אין ביטול על בצק קפוא שהופשר.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="final">
+  <div class="wrap">
+    <h2 class="reveal">רוצים פיצה בערב?<br>תפשירו אותה מהבוקר.</h2>
+    <p class="reveal">כותבים לנו בוואטסאפ וסוגרים הזמנה ואיסוף.</p>
+    <a class="btn-wa reveal" href="https://wa.me/972525800797?text=%D7%94%D7%99%D7%99%2C%20%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%94%D7%96%D7%9E%D7%99%D7%9F%20%D7%9E%D7%90%D7%A8%D7%96">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.2c-.2.6-1.2 1.1-1.7 1.2-.5 0-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5s.8 1.9.8 2c.1.1.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.4 1.8 2.2 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.1z"/></svg>
+      להזמנה בוואטסאפ
+    </a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <span><b>פשוט לאפות</b> · בצק נאפוליטני תוצרת בית</span>
+    <span>וואטסאפ: 052-5800797 · איסוף: נס ציונה 10, אם המושבות הותיקה, פתח תקווה</span>
+  </div>
+</footer>
+
+<a class="fab" href="https://wa.me/972525800797?text=%D7%94%D7%99%D7%99%2C%20%D7%90%D7%A9%D7%9E%D7%97%20%D7%9C%D7%94%D7%96%D7%9E%D7%99%D7%9F%20%D7%9E%D7%90%D7%A8%D7%96" aria-label="הזמנה בוואטסאפ">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.2 14.2c-.2.6-1.2 1.1-1.7 1.2-.5 0-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5s.8 1.9.8 2c.1.1.1.3 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.4 1.8 2.2 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l.9-1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.5.3.1.2.1.7-.1 1.1z"/></svg>
+  וואטסאפ
+</a>
+
+<script>
+// header shadow on scroll
+const hdr = document.getElementById('hdr');
+addEventListener('scroll', () => hdr.classList.toggle('scrolled', scrollY > 8), {passive:true});
+
+// reveal on scroll
+const els = document.querySelectorAll('.reveal');
+const io = new IntersectionObserver(entries => {
+  entries.filter(e => e.isIntersecting).forEach((e, i) => {
+    setTimeout(() => e.target.classList.add('in'), i * 90);
+    io.unobserve(e.target);
+  });
+}, {threshold: .12, rootMargin: '0px 0px -40px 0px'});
+els.forEach(el => io.observe(el));
+// fallback: never leave content hidden (print, full-page capture, old browsers)
+setTimeout(() => els.forEach(el => el.classList.add('in')), 900);
+</script>
+
+</body>
+</html>
