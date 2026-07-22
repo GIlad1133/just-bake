@@ -51,3 +51,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Raw photo/video source (2.6 GB) — only optimized copies in website/assets/ are committed
+JustBake-photo-videos/
+# Website build tooling output (temp — deleted after site ships)
+tools/
+.playwright-mcp/
