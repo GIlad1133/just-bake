@@ -52,7 +52,9 @@ Experience tone, real photos, own WhatsApp CTA. No dates/prices — "פרטים 
 
 ## Images
 Use ONLY files from `assets/` (relative paths). Every <img> gets Hebrew alt text.
-Available: hero-pizza.jpg, hero-margherita.jpg, kit-packed.jpg, kit-ingredients.jpg,
-kit-dough-containers.jpg, dough-balls-tray.jpg, dough-balls-board.jpg,
-calzone-chocolate.jpg, gf-pizza.jpg, workshop-hands-dough.jpg, workshop-stretch.jpg,
-workshop-topping.jpg, bake-oven-fire.jpg, bake-taboon-flame.jpg, bake-ooni-flame.jpg
+All images are AI-generated (Gemini, 23/07/2026) per Gilad's request — no real
+customer/family photos on the site. Available: ai-hero-margherita.jpg,
+ai-hero-pizza.jpg, ai-kit-packed.jpg, ai-kit-ingredients.jpg,
+ai-dough-balls-board.jpg, ai-calzone-chocolate.jpg, ai-gf-pizza.jpg,
+ai-workshop-hands-dough.jpg, ai-workshop-stretch.jpg, ai-workshop-topping.jpg,
+ai-bake-oven-fire.jpg, ai-bake-taboon-flame.jpg, ai-bake-ooni-flame.jpg
