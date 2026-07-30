@@ -132,7 +132,7 @@ preset = st.radio(
     "Quick range",
     options=list(PRESETS.keys()),
     horizontal=True,
-    index=0,
+    index=list(PRESETS.keys()).index("השנה"),
     label_visibility="collapsed",
 )
 
