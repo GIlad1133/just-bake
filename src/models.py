@@ -8,6 +8,19 @@ from typing import List, Optional
 from datetime import datetime
 
 
+def _sanitize_phone(phone: Optional[str]) -> str:
+    """Strip everything except ASCII digits from a phone number.
+
+    Keep.co.il rejects numbers containing formatting characters — including
+    invisible Unicode punctuation like U+2011 (non-breaking hyphen) and U+202C
+    (pop directional formatting) copy-pasted from spreadsheet cells — with a
+    400 "Invalid client phone format". Returns "" for None/empty input.
+    """
+    if not phone:
+        return ""
+    return "".join(ch for ch in str(phone) if ch in "0123456789")
+
+
 @dataclass
 class OrderItem:
     """Individual product in an order (dough, kit, sauce, etc.)"""
@@ -51,7 +64,11 @@ class Order:
         """
         calculated_total = sum(item.total_price for item in self.items)
         difference = abs(calculated_total - self.total_amount)
-        return difference <= tolerance
+        # Round to agorot (cents) before comparing. The business works in whole
+        # agorot, and raw float subtraction (e.g. 3 × 33.33 = 99.9899…) leaves
+        # ~1e-15 of representation noise that would otherwise push an exact-0.01
+        # difference just over tolerance and wrongly reject a valid order.
+        return round(difference, 2) <= tolerance
 
     @property
     def total_agorot(self) -> int:
@@ -101,7 +118,7 @@ class KeepReceipt:
         # Build client object
         client_data = {
             "name": self.customer_name,
-            "phone": self.phone or ""
+            "phone": _sanitize_phone(self.phone)
         }
 
         # Add business ID if provided (for B2B customers)
