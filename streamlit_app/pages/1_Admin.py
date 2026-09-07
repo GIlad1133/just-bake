@@ -38,6 +38,7 @@ def _invalidate_orders():
     st.session_state.pop("_orders_cache", None)
     st.session_state.pop("_orders_cache_at", None)
 import json
+import logging
 import os
 import sys
 from dotenv import load_dotenv
@@ -445,10 +446,22 @@ def bulk_create_invoices(row_numbers: list) -> dict:
             order = pending.get(row_num)
             if not order:
                 result["failures"].append((row_num, "Could not read order data from sheet"))
-            elif processor._process_single_order(order, stop_on_validation_error=False):
+                progress.progress(i / n)
+                continue
+
+            # Diagnostic: log the exact payload via logging (print/stdout does
+            # not reliably reach Streamlit Cloud logs). phone repr exposes any
+            # invisible Unicode characters. On failure the payload is also
+            # returned so it shows in the UI.
+            payload_json = json.dumps(processor._build_receipt(order).to_dict(), ensure_ascii=False)
+            logging.getLogger("admin.payload").info(
+                "row %s phone=%r payload: %s", row_num, order.phone, payload_json)
+
+            if processor._process_single_order(order, stop_on_validation_error=False):
                 result["successes"] += 1
             else:
-                result["failures"].append((row_num, "Invoice failed — check Status column"))
+                result["failures"].append(
+                    (row_num, f"Invoice failed — payload sent: {payload_json}"))
             progress.progress(i / n)
 
         status.empty()
