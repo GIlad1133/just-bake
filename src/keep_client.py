@@ -6,6 +6,7 @@ Handles OAuth authentication and receipt creation.
 import requests
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+import json
 import time
 import os
 
@@ -200,6 +201,12 @@ class KeepClient:
         Raises:
             Exception if receipt creation fails
         """
+        # Log the exact outgoing payload (shows up in Streamlit Cloud logs).
+        # This line only exists in the fixed code, so seeing it in the logs also
+        # proves the running app is not a stale in-memory module.
+        print(f"[keep] POST /seller/api/documents/income payload: "
+              f"{json.dumps(receipt_data, ensure_ascii=False)}", flush=True)
+
         response = self._make_request("POST", "/seller/api/documents/income", data=receipt_data)
 
         # Add delay to avoid rate limiting on subsequent requests
