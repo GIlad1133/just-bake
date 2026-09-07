@@ -34,6 +34,12 @@ class GoogleSheetsClient:
     COL_PHONE = 28              # Column AC: Phone Number (optional)
     COL_BUSINESS_ID = 29        # Column AD: Business ID / ח.פ. (optional, for B2B)
 
+    # Pizza Workshop product — appended AFTER business_id (not contiguous with the
+    # 10 products in G–Z) to avoid shifting existing columns. Mirrors products.py.
+    COL_WORKSHOP_QTY = 30       # Column AE: Workshop Qty
+    COL_WORKSHOP_PRICE = 31     # Column AF: Workshop Price
+    WORKSHOP_NAME = "סדנאות פיצה"
+
     # Product names (same order as PRODUCTS in products.py)
     PRODUCT_NAMES = [
         "ערכה נפוליטנית",    # Neapolitan Kit
@@ -156,6 +162,18 @@ class GoogleSheetsClient:
                     price_per_unit=price
                 )
                 items.append(item)
+
+        # Pizza Workshop lives in non-contiguous columns AE/AF (see products.py),
+        # so it's parsed separately from the G–Z product loop above.
+        w_qty_col, w_price_col = self.COL_WORKSHOP_QTY, self.COL_WORKSHOP_PRICE
+        w_qty = int(row[w_qty_col]) if w_qty_col < len(row) and row[w_qty_col] else 0
+        w_price = float(row[w_price_col]) if w_price_col < len(row) and row[w_price_col] else 0.0
+        if w_qty > 0 and w_price > 0:
+            items.append(OrderItem(
+                name=self.WORKSHOP_NAME,
+                quantity=w_qty,
+                price_per_unit=w_price
+            ))
 
         return items
 
