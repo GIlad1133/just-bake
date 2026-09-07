@@ -9,7 +9,14 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
 import os
+import re
 from .models import Order, OrderItem
+
+
+def clean_phone(phone: str) -> str:
+    """Keep digits only — phones copied from WhatsApp/contacts carry invisible
+    Unicode direction marks (e.g. U+202C) that Keep.co.il rejects."""
+    return re.sub(r"\D", "", phone or "")
 
 
 class GoogleSheetsClient:
@@ -212,7 +219,7 @@ class GoogleSheetsClient:
                     row_id = row[self.COL_ROW_ID] if self.COL_ROW_ID < len(row) and row[self.COL_ROW_ID] else str(row_idx)
 
                     # Get optional fields
-                    phone = row[self.COL_PHONE] if self.COL_PHONE < len(row) and row[self.COL_PHONE] else ""
+                    phone = clean_phone(row[self.COL_PHONE]) if self.COL_PHONE < len(row) and row[self.COL_PHONE] else ""
                     business_id = row[self.COL_BUSINESS_ID] if self.COL_BUSINESS_ID < len(row) and row[self.COL_BUSINESS_ID] else ""
 
                     # Parse order data

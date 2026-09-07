@@ -98,11 +98,13 @@ class KeepReceipt:
         # Format datetime as "YYYY-MM-DD HH:MM:SS"
         formatted_date = self.doc_date.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Build client object
+        # Build client object — omit phone when empty: Keep validates the
+        # format whenever the key is present, and "" fails validation
         client_data = {
-            "name": self.customer_name,
-            "phone": self.phone or ""
+            "name": self.customer_name
         }
+        if self.phone:
+            client_data["phone"] = self.phone
 
         # Add business ID if provided (for B2B customers)
         if self.business_id:

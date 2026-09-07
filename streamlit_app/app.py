@@ -7,6 +7,7 @@ import streamlit as st
 from datetime import datetime, date
 import uuid
 import os
+import re
 from dotenv import load_dotenv
 from products import PRODUCTS, PAYMENT_METHODS
 from sheets_client import get_sheets_client, get_spreadsheet
@@ -132,7 +133,9 @@ def submit_order(customer_name, order_date, payment_method, product_data, phone=
                 row_data.append(product_data.get(f"{prefix}_qty") or 0)
                 row_data.append(product_data.get(f"{prefix}_price") or 0.0)
 
-        row_data += [row_id, "", phone or "", business_id or ""]
+        # Digits only — pasted phones carry invisible Unicode direction marks
+        # (e.g. U+202C from WhatsApp) that Keep.co.il rejects
+        row_data += [row_id, "", re.sub(r"\D", "", phone or ""), business_id or ""]
 
         for product in PRODUCTS:
             if "qty_col" not in product:

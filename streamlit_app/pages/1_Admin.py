@@ -47,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) 
 from sheets_client import get_sheets_client, get_spreadsheet
 from date_widget import date_input_dmy as _date_input_dmy
 from products import PRODUCTS, PAYMENT_METHODS
-from src.google_sheets import GoogleSheetsClient
+from src.google_sheets import GoogleSheetsClient, clean_phone
 from src.keep_client import KeepClient
 from src.invoice_processor import InvoiceProcessor
 
@@ -209,7 +209,7 @@ def update_order(row_number: int, customer: str, phone: str, order_date, payment
         worksheet.update(f"A{row_number}:D{row_number}", [row_data[:4]])
         worksheet.update(f"G{row_number}:Z{row_number}", [row_data[4:]])
         # Update phone (AC = column 29)
-        worksheet.update_cell(row_number, 29, phone)
+        worksheet.update_cell(row_number, 29, clean_phone(phone))
         # Update products stored in non-contiguous columns (e.g. Pizza Workshop at AE/AF)
         for product in PRODUCTS:
             if "qty_col" not in product:
