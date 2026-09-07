@@ -382,15 +382,6 @@ def create_invoice_now(row_number: int) -> tuple:
 
         keep = KeepClient(keep_client_id, keep_client_secret, keep_api_base_url)
         processor = InvoiceProcessor(sheets, keep)
-
-        # Diagnostic: log the exact payload from the PAGE (pages reload on every
-        # code update, unlike imported src/ modules which stay cached in memory —
-        # so this line shows up even without a full app reboot). phone repr
-        # exposes any invisible Unicode characters.
-        payload = processor._build_receipt(order).to_dict()
-        print(f"[admin] row {row_number} phone={order.phone!r} payload: "
-              f"{json.dumps(payload, ensure_ascii=False)}", flush=True)
-
         success = processor._process_single_order(order, stop_on_validation_error=False)
 
         _invalidate_orders()
