@@ -57,3 +57,12 @@ JustBake-photo-videos/
 # Website build tooling output (temp — deleted after site ships)
 tools/
 .playwright-mcp/
+
+# Plaintext credentials — matches the literal filename, not just *_secret*.txt
+secret.txt
+
+# Raw camera footage from the phone (3.2 GB across Khachapuri/ and yeast/).
+# The build scripts (build_*.sh) and caption files (*.ass) ARE tracked — they are the
+# edit decision lists. The .MOV sources they read from stay local only.
+*.MOV
+*.mov
