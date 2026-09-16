@@ -18,11 +18,47 @@ import anthropic
 from apify_client import ApifyClient
 
 from src.sheet_rows import COMMUNITY_HEADERS, build_row
+from src import telegram_notify
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
 
 COMMUNITY_SHEET_NAME = "Community"
+
+GROUP_NAMES = {
+    "1061644604326919": "הטאבון הביתי",
+    "4432265433559920": "פיצה נפוליטנית",
+    "2030269437295695": "אפייה ביתית",
+    "587379969063560": "מחמצת ולחם",
+    "695285311378525": "טאבון ופיצה",
+    "hometabun": "Home Tabun",
+    "2926500980956274": "נפלאות הטאבון",
+}
+
+
+def group_name(group_url: str) -> str:
+    for key, name in GROUP_NAMES.items():
+        if key in (group_url or ""):
+            return name
+    return "קבוצה"
+
+
+def maybe_alert(post: dict, result: dict, cfg: dict) -> tuple[str, str]:
+    """Send an alert if the post qualifies. Returns (notified_at, tg_message_id),
+    both empty strings when nothing was sent."""
+    if not cfg.get("telegram_token") or not cfg.get("telegram_chat_id"):
+        return "", ""
+    if not telegram_notify.should_notify(result["lead_score"], result["score"], ""):
+        return "", ""
+
+    text = telegram_notify.format_alert(post, result, group_name(post.get("facebookUrl", "")))
+    mid = telegram_notify.send_alert(
+        cfg["telegram_token"], cfg["telegram_chat_id"], text,
+        post.get("url", ""), cfg["dashboard_url"])
+    if mid is None:
+        return "", ""
+    log.info(f"Alerted lead={result['lead_score']} path={result['lead_path']} msg={mid}")
+    return datetime.now().strftime("%d/%m/%Y %H:%M"), str(mid)
 
 
 # ─── Sheets ───────────────────────────────────────────────────────────────────
@@ -367,6 +403,12 @@ def run_monitor():
         for u in os.getenv("MONITORING_GROUPS", "").split(",")
         if u.strip()
     ]
+    cfg = {
+        "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
+        "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
+        "dashboard_url": os.getenv("DASHBOARD_URL", "https://just-bake.streamlit.app/Community"),
+        "healthcheck_url": os.getenv("HEALTHCHECK_URL", ""),
+    }
 
     if not all([apify_token, anthropic_key, credentials_json, spreadsheet_id, monitoring_groups]):
         raise ValueError("Missing required env vars: APIFY_API_TOKEN, ANTHROPIC_API_KEY, GOOGLE_SHEETS_CREDENTIALS, GOOGLE_SHEETS_SPREADSHEET_ID, MONITORING_GROUPS")
@@ -408,26 +450,30 @@ def run_monitor():
             # New post — score and append
             log.info(f"New post: {url[:70]}...")
             result = score_and_answer(post, claude)
+            notified_at, tg_message_id = maybe_alert(post, result, cfg)
 
-            ws.append_row([
-                datetime.now().strftime("%d/%m/%Y"),          # date_fetched
-                post.get("facebookUrl", ""),                   # group_url
-                url,                                           # post_url
-                post.get("user", {}).get("name", ""),          # post_author
-                str(post.get("time", ""))[:10],                # post_date
-                (post.get("text") or "")[:1000],               # post_text
-                comments_flat[:800],                           # comments
-                result.get("answer") or "",                    # answer
-                result.get("score", 0),                        # score
-                result.get("score_reason", ""),                # score_reason
-                ", ".join(result.get("tags", [])),             # tags
-                result.get("question_type", ""),               # question_type
-                "pending",                                     # status
-                "",                                            # posted_date
-                post.get("image_url") or "",                   # image_url
-                result.get("image_description") or "",         # image_description
-                result.get("post_type") or "",                 # post_type
-            ])
+            ws.append_row(build_row({
+                "date_fetched": datetime.now().strftime("%d/%m/%Y"),
+                "group_url": post.get("facebookUrl", ""),
+                "post_url": url,
+                "post_author": post.get("user", {}).get("name", ""),
+                "post_date": str(post.get("time", ""))[:10],
+                "post_text": (post.get("text") or "")[:1000],
+                "comments": comments_flat[:800],
+                "answer": result.get("answer") or "",
+                "score": result["score"],
+                "score_reason": result["score_reason"],
+                "tags": ", ".join(result["tags"]),
+                "question_type": result["question_type"],
+                "status": "pending",
+                "image_url": post.get("image_url") or "",
+                "image_description": result["image_description"],
+                "post_type": result["post_type"],
+                "lead_score": result["lead_score"],
+                "lead_path": result["lead_path"],
+                "notified_at": notified_at,
+                "tg_message_id": tg_message_id,
+            }))
             known_posts[url] = {"row": None, "comment_count": len(comments_flat)}
             saved += 1
 
