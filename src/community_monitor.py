@@ -17,9 +17,10 @@ from google.oauth2.service_account import Credentials
 import anthropic
 from apify_client import ApifyClient
 
-from src.sheet_rows import COMMUNITY_HEADERS, build_row
+from src.sheet_rows import COMMUNITY_HEADERS, build_row, row_to_dict
 from src import telegram_notify
 from src import answer_templates
+from src import sheet_meta
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
@@ -60,6 +61,95 @@ def maybe_alert(post: dict, result: dict, cfg: dict) -> tuple[str, str]:
         return "", ""
     log.info(f"Alerted lead={result['lead_score']} path={result['lead_path']} msg={mid}")
     return datetime.now().strftime("%d/%m/%Y %H:%M"), str(mid)
+
+
+TEMPLATE_COMMANDS = {"/order": "order", "/mentoring": "mentoring",
+                     "/event": "event", "/pro": "professional"}
+
+
+def classify_reply(reply: dict) -> dict:
+    """Turn a raw Telegram reply into an action. Never raises."""
+    text = (reply.get("text") or "").strip()
+    target = reply.get("reply_to")
+
+    if not text:
+        return {"kind": "ignored"}
+
+    if text in ("/bad", "/skip"):
+        return {"kind": "bad", "target": target} if target else {"kind": "ignored"}
+
+    head, _, rest = text.partition(" ")
+    payload = rest.strip()
+
+    if head == "/fact":
+        return {"kind": "fact", "payload": payload} if payload else {"kind": "ignored"}
+
+    if head in TEMPLATE_COMMANDS:
+        return ({"kind": "template", "path": TEMPLATE_COMMANDS[head], "payload": payload}
+                if payload else {"kind": "ignored"})
+
+    if text.startswith("/"):
+        return {"kind": "ignored"}
+
+    return {"kind": "answer", "target": target, "payload": text} if target else {"kind": "ignored"}
+
+
+def apply_replies(spreadsheet, ws, cfg) -> int:
+    """Drain and apply Telegram replies. Every processed reply is acknowledged —
+    without an ack, a reply silently lost to Telegram's 24h expiry looks exactly
+    like one that was saved."""
+    if not cfg.get("telegram_token"):
+        return 0
+
+    offset = int(sheet_meta.get_meta(spreadsheet, "telegram_offset", "0") or 0)
+    replies, next_offset = telegram_notify.fetch_replies(
+        cfg["telegram_token"], cfg["telegram_chat_id"], offset)
+    if next_offset != offset:
+        sheet_meta.set_meta(spreadsheet, "telegram_offset", next_offset)
+
+    rows = ws.get_all_values()
+    by_msg_id = {}
+    for i, row in enumerate(rows[1:], start=2):
+        data = row_to_dict(row)
+        if data.get("tg_message_id"):
+            by_msg_id[str(data["tg_message_id"])] = i
+
+    applied = 0
+    for reply in replies:
+        action = classify_reply(reply)
+        kind = action["kind"]
+        ack = None
+
+        if kind == "answer":
+            row_num = by_msg_id.get(str(action["target"]))
+            if row_num:
+                ws.update_cell(row_num, COMMUNITY_HEADERS.index("my_answer") + 1, action["payload"])
+                ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "posted")
+                ack = "✅ נשמר כתשובה שלך, והפוסט סומן כפורסם"
+            else:
+                ack = "⚠️ לא מצאתי את הפוסט שהגבת עליו"
+
+        elif kind == "bad":
+            row_num = by_msg_id.get(str(action["target"]))
+            if row_num:
+                ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "bad_score")
+                ack = "✅ סומן כניקוד שגוי"
+
+        elif kind == "fact":
+            spreadsheet.worksheet(answer_templates.FACTS_SHEET).append_row([action["payload"]])
+            ack = f"✅ נוסף לעובדות: {action['payload'][:60]}"
+
+        elif kind == "template":
+            answer_templates.update_template(spreadsheet, action["path"], action["payload"])
+            ack = f"✅ תבנית {action['path']} עודכנה: {action['payload'][:60]}"
+
+        if ack:
+            telegram_notify.send_plain(cfg["telegram_token"], cfg["telegram_chat_id"], ack)
+            applied += 1
+
+    if applied:
+        log.info(f"Applied {applied} Telegram replies")
+    return applied
 
 
 # ─── Sheets ───────────────────────────────────────────────────────────────────
@@ -425,6 +515,8 @@ def run_monitor():
     ws = get_or_create_community_sheet(spreadsheet)
     known_posts = get_known_posts(ws)
     log.info(f"Known posts: {len(known_posts)}")
+
+    apply_replies(spreadsheet, ws, cfg)
 
     guidance = answer_templates.render_guidance(
         answer_templates.load_templates(spreadsheet),

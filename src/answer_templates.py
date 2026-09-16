@@ -56,6 +56,29 @@ def load_facts(spreadsheet) -> list:
     return [r[0] for r in rows if r and r[0].strip()]
 
 
+HISTORY_SHEET = "Templates_history"
+
+
+def update_template(spreadsheet, path: str, text: str) -> None:
+    """Overwrite one template, keeping the previous value. A typo in /order
+    would otherwise destroy wording with no undo."""
+    ws = spreadsheet.worksheet(TEMPLATES_SHEET)
+    rows = ws.get_all_values()
+    for i, row in enumerate(rows, start=1):
+        if row and row[0] == path:
+            try:
+                hist = spreadsheet.worksheet(HISTORY_SHEET)
+            except gspread.WorksheetNotFound:
+                hist = spreadsheet.add_worksheet(HISTORY_SHEET, rows=500, cols=3)
+                hist.update("A1", [["path", "previous_text", "replaced_at"]])
+            from datetime import datetime
+            hist.append_row([path, row[1] if len(row) > 1 else "",
+                             datetime.now().strftime("%d/%m/%Y %H:%M")])
+            ws.update_cell(i, 2, text)
+            return
+    ws.append_row([path, text])
+
+
 def render_guidance(templates: dict, facts: list) -> str:
     """Prompt fragment. Empty string when both tabs are empty, so the prompt
     is unchanged rather than carrying a dangling header."""
