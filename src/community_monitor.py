@@ -199,7 +199,7 @@ def get_known_posts(ws) -> dict:
 # ─── Apify ────────────────────────────────────────────────────────────────────
 
 LOOKBACK_HOURS = 9      # the 20:00->04:00 UTC gap is 8h, not 4h
-POSTS_PER_GROUP = 5     # deliberate coverage cap; cost tracks posts examined
+POSTS_PER_GROUP = 3     # deliberate coverage cap; cost tracks posts examined, not frequency
 
 
 def build_run_input(group_urls: list) -> dict:
