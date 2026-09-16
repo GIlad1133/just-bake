@@ -17,16 +17,12 @@ from google.oauth2.service_account import Credentials
 import anthropic
 from apify_client import ApifyClient
 
+from src.sheet_rows import COMMUNITY_HEADERS, build_row
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
 
 COMMUNITY_SHEET_NAME = "Community"
-COMMUNITY_HEADERS = [
-    "date_fetched", "group_url", "post_url", "post_author",
-    "post_date", "post_text", "comments", "answer",
-    "score", "score_reason", "tags", "question_type", "status", "posted_date", "image_url",
-    "image_description", "post_type", "my_answer",
-]
 
 RECENT_DAYS = 3  # only score posts from roughly the last couple of days
 
@@ -119,6 +115,23 @@ def is_noise(post: dict) -> tuple[bool, str]:
         if pattern.lower() in text:
             return True, pattern
     return False, ""
+
+
+def build_noise_row(post: dict, reason: str) -> list:
+    """Row for a post rejected by the noise pre-filter — no Claude call made."""
+    return build_row({
+        "date_fetched": datetime.now().strftime("%d/%m/%Y"),
+        "group_url": post.get("facebookUrl", ""),
+        "post_url": post.get("url", ""),
+        "post_author": post.get("user", {}).get("name", ""),
+        "post_date": str(post.get("time", ""))[:10],
+        "post_text": (post.get("text") or "")[:1000],
+        "score": -1,
+        "score_reason": reason,
+        "status": "noise",
+        "lead_score": 0,
+        "lead_path": "none",
+    })
 
 
 # ─── Claude ───────────────────────────────────────────────────────────────────
@@ -279,16 +292,7 @@ def run_monitor():
             noise, reason = is_noise(post)
             if noise:
                 log.info(f"Skipping noise ({reason}): {url[:60]}")
-                ws.append_row([
-                    datetime.now().strftime("%d/%m/%Y"),
-                    post.get("facebookUrl", ""),
-                    url,
-                    post.get("user", {}).get("name", ""),
-                    str(post.get("time", ""))[:10],
-                    (post.get("text") or "")[:1000],
-                    "", "", -1, reason, "", "noise", "", "", "",  # score=-1, status=noise
-                    "", "",
-                ])
+                ws.append_row(build_noise_row(post, reason))
                 known_posts[url] = {"row": None, "comment_count": 0}
                 saved += 1
                 continue
