@@ -44,6 +44,17 @@ jobs:
           DASHBOARD_URL: https://just-bake.streamlit.app/Community
         run: python src/community_monitor.py
 
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="⚠️ Community monitor נכשל. ריצה ${{ github.run_id }}"
+          if [ -n "${{ secrets.HEALTHCHECK_URL }}" ]; then
+            curl -s -m 10 "${{ secrets.HEALTHCHECK_URL }}/fail" || true
+          fi
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
