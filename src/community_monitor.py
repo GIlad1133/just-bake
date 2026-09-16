@@ -19,6 +19,7 @@ from apify_client import ApifyClient
 
 from src.sheet_rows import COMMUNITY_HEADERS, build_row
 from src import telegram_notify
+from src import answer_templates
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
@@ -228,7 +229,7 @@ def parse_score_response(text: str) -> dict:
     }
 
 
-def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
+def score_and_answer(post: dict, claude: anthropic.Anthropic, guidance: str = "") -> dict:
     comments_text = "\n".join([
         f"- {c.get('profileName', 'אנונימי')}: {c.get('text', '')}"
         for c in (post.get("topComments") or [])
@@ -272,6 +273,8 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
 {comments_text}
 
 {"יש תמונה/וידאו מצורפת לפוסט - נתח אותה: מה מוצג בה? האם היא חלק מהשאלה, הדגמה, פרסומת, או שיתוף תוצאה?" if has_image else "אין תמונה בפוסט."}
+
+{guidance}
 
 ענה בJSON בלבד (ללא markdown):
 {{
@@ -423,6 +426,10 @@ def run_monitor():
     known_posts = get_known_posts(ws)
     log.info(f"Known posts: {len(known_posts)}")
 
+    guidance = answer_templates.render_guidance(
+        answer_templates.load_templates(spreadsheet),
+        answer_templates.load_facts(spreadsheet))
+
     # Fetch posts
     posts = fetch_posts(monitoring_groups, apify_token)
     claude = anthropic.Anthropic(api_key=anthropic_key)
@@ -449,7 +456,7 @@ def run_monitor():
 
             # New post — score and append
             log.info(f"New post: {url[:70]}...")
-            result = score_and_answer(post, claude)
+            result = score_and_answer(post, claude, guidance)
             notified_at, tg_message_id = maybe_alert(post, result, cfg)
 
             ws.append_row(build_row({
@@ -482,7 +489,7 @@ def run_monitor():
             stored = known_posts[url]
             if len(comments_flat) > stored["comment_count"] and stored["row"]:
                 log.info(f"Updated comments on: {url[:70]}...")
-                result = score_and_answer(post, claude)
+                result = score_and_answer(post, claude, guidance)
                 row = stored["row"]
                 # Update comments (col 7), answer (8), score (9), score_reason (10)
                 ws.update(f"G{row}:J{row}", [[
