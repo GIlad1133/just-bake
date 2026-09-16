@@ -8,7 +8,7 @@ import os
 import json
 import logging
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -23,8 +23,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
 
 COMMUNITY_SHEET_NAME = "Community"
-
-RECENT_DAYS = 3  # only score posts from roughly the last couple of days
 
 
 # ─── Sheets ───────────────────────────────────────────────────────────────────
@@ -64,29 +62,40 @@ def get_known_posts(ws) -> dict:
 
 # ─── Apify ────────────────────────────────────────────────────────────────────
 
-def fetch_posts(group_urls: list, apify_token: str, posts_per_group: int = 10) -> list:
-    client = ApifyClient(apify_token)
-    run_input = {
+LOOKBACK_HOURS = 5      # > the 4h cadence, so a delayed run still overlaps
+POSTS_PER_GROUP = 5     # deliberate coverage cap; cost tracks posts examined
+
+
+def build_run_input(group_urls: list) -> dict:
+    """Apify input. onlyPostsNewerThan filters BEFORE billing (verified 16/09/2026),
+    so it is the only lever that stops us re-buying posts already in the sheet."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)) \
+        .replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return {
         "startUrls": [{"url": url} for url in group_urls],
-        "resultsLimit": posts_per_group,
+        "resultsLimit": POSTS_PER_GROUP,
         "maxComments": 3,
         "sortOrder": "RECENT_POSTS",
-        # Datacenter proxy (default) is far cheaper than residential — keeps runs
-        # inside the Apify free tier. Switch back to RESIDENTIAL if FB blocks it.
+        "onlyPostsNewerThan": cutoff,
         "proxyConfiguration": {"useApifyProxy": True},
     }
-    log.info(f"Fetching posts from {len(group_urls)} groups...")
+
+
+def fetch_posts(group_urls: list, apify_token: str) -> list:
+    client = ApifyClient(apify_token)
+    run_input = build_run_input(group_urls)
+    log.info(f"Fetching from {len(group_urls)} groups since {run_input['onlyPostsNewerThan']}")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
     valid = [item for item in items if item.get("text") and item.get("url")]
-    # Extract first image URL from attachments
     for item in valid:
         attachments = item.get("attachments") or []
         item["image_url"] = next(
-            (a.get("thumbnail") or a.get("photo_image", {}).get("uri") for a in attachments if a.get("thumbnail") or a.get("photo_image")),
-            None
+            (a.get("thumbnail") or a.get("photo_image", {}).get("uri")
+             for a in attachments if a.get("thumbnail") or a.get("photo_image")),
+            None,
         )
-    log.info(f"Got {len(valid)} posts with text ({sum(1 for p in valid if p.get('image_url'))} with images)")
+    log.info(f"Got {len(valid)} posts ({sum(1 for p in valid if p.get('image_url'))} with images)")
     return valid
 
 
@@ -347,15 +356,6 @@ lead_score=2, lead_path=professional, score=9
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
-def _is_recent(post: dict) -> bool:
-    """Keep only posts from the last RECENT_DAYS days (unparseable dates kept)."""
-    raw = str(post.get("time", ""))[:10]
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d") >= datetime.now() - timedelta(days=RECENT_DAYS)
-    except ValueError:
-        return True
-
-
 def run_monitor():
     # Load env
     apify_token = os.getenv("APIFY_API_TOKEN")
@@ -383,8 +383,6 @@ def run_monitor():
 
     # Fetch posts
     posts = fetch_posts(monitoring_groups, apify_token)
-    posts = [p for p in posts if _is_recent(p)]
-    log.info(f"{len(posts)} posts within last {RECENT_DAYS} days")
     claude = anthropic.Anthropic(api_key=anthropic_key)
     saved = updated = 0
 
