@@ -433,7 +433,7 @@ def run_monitor():
     # Fetch posts
     posts = fetch_posts(monitoring_groups, apify_token)
     claude = anthropic.Anthropic(api_key=anthropic_key)
-    saved = updated = 0
+    saved = updated = alerted = 0
 
     for post in posts:
         url = post.get("url")
@@ -481,6 +481,8 @@ def run_monitor():
                 "notified_at": notified_at,
                 "tg_message_id": tg_message_id,
             }))
+            if tg_message_id:
+                alerted += 1
             known_posts[url] = {"row": None, "comment_count": len(comments_flat)}
             saved += 1
 
@@ -501,6 +503,14 @@ def run_monitor():
                 updated += 1
 
     log.info(f"Done. Saved {saved} new posts, updated {updated} existing posts.")
+    telegram_notify.ping_healthcheck(cfg["healthcheck_url"])
+
+    # Last scheduled run of the day (20:00 UTC) sends the summary. Its absence
+    # is the signal — see the dead-man's switch for the case where no run happens.
+    if datetime.now(timezone.utc).hour >= 20 and cfg.get("telegram_token"):
+        telegram_notify.send_plain(
+            cfg["telegram_token"], cfg["telegram_chat_id"],
+            f"📊 סיכום יום\nפוסטים חדשים: {saved}\nעודכנו: {updated}\nהתראות: {alerted}")
     return saved
 
 

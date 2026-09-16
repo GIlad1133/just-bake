@@ -94,3 +94,30 @@ def test_send_failure_returns_none_and_does_not_raise(mocker):
 def test_send_network_error_returns_none(mocker):
     mocker.patch("src.telegram_notify.requests.post", side_effect=OSError("boom"))
     assert send_alert("tok", "123", "hi", "u", "d") is None
+
+
+from src.telegram_notify import ping_healthcheck, send_plain
+
+
+def test_ping_is_a_no_op_when_url_unset(mocker):
+    get = mocker.patch("src.telegram_notify.requests.get")
+    ping_healthcheck("")
+    get.assert_not_called()
+
+
+def test_ping_failure_is_swallowed(mocker):
+    mocker.patch("src.telegram_notify.requests.get", side_effect=OSError("down"))
+    ping_healthcheck("https://hc-ping.com/abc")  # must not raise
+
+
+def test_ping_appends_fail_suffix(mocker):
+    get = mocker.patch("src.telegram_notify.requests.get")
+    ping_healthcheck("https://hc-ping.com/abc", suffix="/fail")
+    assert get.call_args.args[0] == "https://hc-ping.com/abc/fail"
+
+
+def test_send_plain_posts_text(mocker):
+    post = mocker.patch("src.telegram_notify.requests.post")
+    post.return_value.status_code = 200
+    post.return_value.json.return_value = {"result": {"message_id": 7}}
+    assert send_plain("tok", "1", "סיכום יומי") == 7

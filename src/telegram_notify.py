@@ -82,3 +82,28 @@ def send_alert(token: str, chat_id: str, text: str,
     except Exception as e:
         log.warning(f"Telegram send failed: {e}")
         return None
+
+
+def ping_healthcheck(url: str, suffix: str = "") -> None:
+    """Dead-man's switch ping. Silent no-op when unconfigured; never raises,
+    because a monitoring failure must not fail the job it monitors."""
+    if not url:
+        return
+    try:
+        requests.get(url + suffix, timeout=10)
+    except Exception as e:
+        log.warning(f"Healthcheck ping failed: {e}")
+
+
+def send_plain(token: str, chat_id: str, text: str) -> int | None:
+    """Plain message with no buttons — used for the daily summary."""
+    try:
+        resp = requests.post(API.format(token=token, method="sendMessage"),
+                             json={"chat_id": chat_id, "text": text}, timeout=20)
+        if resp.status_code != 200:
+            log.warning(f"Telegram sendMessage {resp.status_code}: {resp.text[:200]}")
+            return None
+        return resp.json().get("result", {}).get("message_id")
+    except Exception as e:
+        log.warning(f"Telegram send failed: {e}")
+        return None
