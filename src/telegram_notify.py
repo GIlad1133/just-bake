@@ -107,3 +107,45 @@ def send_plain(token: str, chat_id: str, text: str) -> int | None:
     except Exception as e:
         log.warning(f"Telegram send failed: {e}")
         return None
+
+
+def fetch_replies(token: str, chat_id: str, offset: int) -> tuple[list, int]:
+    """Drain queued updates. Returns (owner_messages, next_offset).
+
+    Telegram queues updates for 24 hours, so a scheduled run is enough — no
+    webhook and no always-on listener.
+
+    from.id is set by Telegram's servers and cannot be spoofed by a sender, so
+    the equality check below is the whole authorisation model. The offset
+    advances past ignored updates too, otherwise a stranger's message would be
+    re-fetched forever.
+    """
+    try:
+        resp = requests.get(API.format(token=token, method="getUpdates"),
+                            params={"offset": offset, "timeout": 0}, timeout=30)
+        if resp.status_code != 200:
+            log.warning(f"Telegram getUpdates {resp.status_code}: {resp.text[:200]}")
+            return [], offset
+        updates = resp.json().get("result", []) or []
+    except Exception as e:
+        log.warning(f"Telegram getUpdates failed: {e}")
+        return [], offset
+
+    if not updates:
+        return [], offset
+
+    owner = str(chat_id)
+    replies = []
+    for update in updates:
+        msg = update.get("message") or {}
+        if str((msg.get("from") or {}).get("id")) != owner:
+            continue
+        replies.append({
+            "text": (msg.get("text") or "").strip(),
+            "reply_to": (msg.get("reply_to_message") or {}).get("message_id"),
+            "message_id": msg.get("message_id"),
+        })
+
+    next_offset = max(u["update_id"] for u in updates) + 1
+    log.info(f"Drained {len(updates)} updates, {len(replies)} from owner")
+    return replies, next_offset

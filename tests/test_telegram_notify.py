@@ -121,3 +121,52 @@ def test_send_plain_posts_text(mocker):
     post.return_value.status_code = 200
     post.return_value.json.return_value = {"result": {"message_id": 7}}
     assert send_plain("tok", "1", "סיכום יומי") == 7
+
+
+from src.telegram_notify import fetch_replies
+
+
+def _update(uid, from_id, text, reply_to=None):
+    msg = {"message_id": uid + 100, "from": {"id": from_id}, "text": text}
+    if reply_to:
+        msg["reply_to_message"] = {"message_id": reply_to}
+    return {"update_id": uid, "message": msg}
+
+
+def test_only_the_owner_chat_is_accepted(mocker):
+    """The bot username is public — anyone can press Start and send messages."""
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": [
+        _update(1, 314244953, "מהבעלים"),
+        _update(2, 999999999, "/fact גבינה חינם"),
+    ]}
+    replies, next_offset = fetch_replies("tok", "314244953", 0)
+    assert len(replies) == 1
+    assert replies[0]["text"] == "מהבעלים"
+    assert next_offset == 3, "offset must advance past ignored updates too"
+
+
+def test_offset_unchanged_when_queue_is_empty(mocker):
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": []}
+    replies, next_offset = fetch_replies("tok", "1", 57)
+    assert replies == []
+    assert next_offset == 57
+
+
+def test_reply_target_is_extracted(mocker):
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": [
+        _update(5, 314244953, "התשובה שלי", reply_to=42)]}
+    replies, _ = fetch_replies("tok", "314244953", 0)
+    assert replies[0]["reply_to"] == 42
+
+
+def test_network_failure_returns_empty_and_keeps_offset(mocker):
+    mocker.patch("src.telegram_notify.requests.get", side_effect=OSError("down"))
+    replies, next_offset = fetch_replies("tok", "1", 12)
+    assert replies == []
+    assert next_offset == 12
