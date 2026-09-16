@@ -136,6 +136,53 @@ def build_noise_row(post: dict, reason: str) -> list:
 
 # ─── Claude ───────────────────────────────────────────────────────────────────
 
+VALID_LEAD_PATHS = {"order", "mentoring", "professional", "event", "none"}
+
+
+def _clamp(value, low: int, high: int, default: int = 0) -> int:
+    try:
+        return max(low, min(high, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def parse_score_response(text: str) -> dict:
+    """Parse Claude's JSON reply into a validated result dict.
+
+    Never raises: a malformed reply yields a zero-scored result so one bad post
+    cannot abort the run.
+    """
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        cleaned = parts[1] if len(parts) > 1 else ""
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+
+    try:
+        data = json.loads(cleaned)
+        if not isinstance(data, dict):
+            raise ValueError("not an object")
+    except Exception as e:
+        log.warning(f"Unparseable Claude response ({e}): {(text or '')[:120]}")
+        data = {}
+
+    path = data.get("lead_path")
+    return {
+        "lead_score": _clamp(data.get("lead_score"), 0, 10),
+        "lead_path": path if path in VALID_LEAD_PATHS else "none",
+        "lead_reason": data.get("lead_reason") or "",
+        "score": _clamp(data.get("score"), 0, 10),
+        "score_reason": data.get("score_reason") or "",
+        "answer": data.get("answer") or None,
+        "tags": data.get("tags") or [],
+        "question_type": data.get("question_type") or "",
+        "post_type": data.get("post_type") or "",
+        "image_description": data.get("image_description") or "",
+    }
+
+
 def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
     comments_text = "\n".join([
         f"- {c.get('profileName', 'אנונימי')}: {c.get('text', '')}"
@@ -221,18 +268,13 @@ def score_and_answer(post: dict, claude: anthropic.Anthropic) -> dict:
             max_tokens=1200,
             messages=[{"role": "user", "content": content}]
         )
-        text = resp.content[0].text.strip()
-        log.info(f"Claude raw response (first 200 chars): {text[:200]}")
-        # Strip markdown code fences if present
-        if text.startswith("```"):
-            text = text.split("```", 2)[1]
-            if text.startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        return json.loads(text)
+        log.info(f"Claude raw response (first 200 chars): {resp.content[0].text.strip()[:200]}")
+        return parse_score_response(resp.content[0].text)
     except Exception as e:
         log.exception(f"Claude error for post {post.get('url','?')[:60]}: {e}")
-        return {"score": 0, "answer": None, "tags": [], "question_type": "other", "score_reason": str(e)}
+        result = parse_score_response("")
+        result["score_reason"] = str(e)
+        return result
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
