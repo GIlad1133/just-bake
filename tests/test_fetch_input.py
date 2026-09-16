@@ -12,7 +12,7 @@ def test_run_input_includes_iso_cutoff_not_relative_string():
 
 
 def test_lookback_exceeds_cadence_so_a_delayed_run_loses_nothing():
-    assert LOOKBACK_HOURS > 4
+    assert LOOKBACK_HOURS >= 9, "must cover the 8h overnight gap between the 20:00 and 04:00 UTC runs"
 
 
 def test_run_input_maps_every_group():

@@ -101,12 +101,13 @@ def apply_replies(spreadsheet, ws, cfg) -> int:
     if not cfg.get("telegram_token"):
         return 0
 
-    offset = int(sheet_meta.get_meta(spreadsheet, "telegram_offset", "0") or 0)
+    try:
+        offset = int(sheet_meta.get_meta(spreadsheet, "telegram_offset", "0") or 0)
+    except ValueError:
+        log.warning("Bad telegram_offset in Meta tab; restarting from 0")
+        offset = 0
     replies, next_offset = telegram_notify.fetch_replies(
         cfg["telegram_token"], cfg["telegram_chat_id"], offset)
-    if next_offset != offset:
-        sheet_meta.set_meta(spreadsheet, "telegram_offset", next_offset)
-
     rows = ws.get_all_values()
     by_msg_id = {}
     for i, row in enumerate(rows[1:], start=2):
@@ -147,6 +148,11 @@ def apply_replies(spreadsheet, ws, cfg) -> int:
             telegram_notify.send_plain(cfg["telegram_token"], cfg["telegram_chat_id"], ack)
             applied += 1
 
+    # Persist the offset only after every reply has been applied and acked.
+    # Advancing first means a mid-loop crash silently eats the replies.
+    if next_offset != offset:
+        sheet_meta.set_meta(spreadsheet, "telegram_offset", next_offset)
+
     if applied:
         log.info(f"Applied {applied} Telegram replies")
     return applied
@@ -158,6 +164,9 @@ def get_or_create_community_sheet(spreadsheet):
     try:
         ws = spreadsheet.worksheet(COMMUNITY_SHEET_NAME)
         # Update headers if they're out of date
+        if ws.col_count < len(COMMUNITY_HEADERS):
+            ws.add_cols(len(COMMUNITY_HEADERS) - ws.col_count)
+            log.info(f"Widened Community sheet to {len(COMMUNITY_HEADERS)} columns")
         current = ws.row_values(1)
         if current != COMMUNITY_HEADERS:
             ws.update("A1", [COMMUNITY_HEADERS])
@@ -189,7 +198,7 @@ def get_known_posts(ws) -> dict:
 
 # ─── Apify ────────────────────────────────────────────────────────────────────
 
-LOOKBACK_HOURS = 5      # > the 4h cadence, so a delayed run still overlaps
+LOOKBACK_HOURS = 9      # the 20:00->04:00 UTC gap is 8h, not 4h
 POSTS_PER_GROUP = 5     # deliberate coverage cap; cost tracks posts examined
 
 
@@ -471,11 +480,14 @@ lead_score=2, lead_path=professional, score=9
         log.info(f"Calling Claude for post {post.get('url','?')[:60]} (content_blocks={len(content)})")
         resp = claude.messages.create(
             model="claude-sonnet-5",
-            max_tokens=1200,
+            max_tokens=4000,
             messages=[{"role": "user", "content": content}]
         )
-        log.info(f"Claude raw response (first 200 chars): {resp.content[0].text.strip()[:200]}")
-        return parse_score_response(resp.content[0].text)
+        log.info(f"Claude blocks: {[b.type for b in resp.content]} stop={resp.stop_reason}")
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        if not text:
+            log.warning(f"No text block in response: {[b.type for b in resp.content]}")
+        return parse_score_response(text)
     except Exception as e:
         log.exception(f"Claude error for post {post.get('url','?')[:60]}: {e}")
         result = parse_score_response("")
