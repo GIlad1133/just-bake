@@ -63,3 +63,34 @@ def test_no_notify_when_already_notified():
 
 def test_blank_notified_at_is_still_eligible():
     assert should_notify(lead_score=10, expertise_score=0, notified_at="   ") is True
+
+
+from src.telegram_notify import send_alert
+
+
+def test_send_returns_message_id(mocker):
+    post = mocker.patch("src.telegram_notify.requests.post")
+    post.return_value.status_code = 200
+    post.return_value.json.return_value = {"ok": True, "result": {"message_id": 42}}
+
+    mid = send_alert("tok", "123", "hello", "https://fb.com/p/1", "https://dash")
+    assert mid == 42
+
+    body = post.call_args.kwargs["json"]
+    assert body["chat_id"] == "123"
+    assert body["parse_mode"] == "HTML"
+    buttons = body["reply_markup"]["inline_keyboard"][0]
+    assert all("url" in b for b in buttons), "URL buttons only — no callbacks, no listener"
+
+
+def test_send_failure_returns_none_and_does_not_raise(mocker):
+    """A Telegram outage must never break the scrape or lose the sheet row."""
+    post = mocker.patch("src.telegram_notify.requests.post")
+    post.return_value.status_code = 403
+    post.return_value.text = "bot can't initiate conversation"
+    assert send_alert("tok", "123", "hi", "u", "d") is None
+
+
+def test_send_network_error_returns_none(mocker):
+    mocker.patch("src.telegram_notify.requests.post", side_effect=OSError("boom"))
+    assert send_alert("tok", "123", "hi", "u", "d") is None

@@ -53,3 +53,32 @@ def format_alert(post: dict, result: dict, group_name: str) -> str:
     if answer:
         lines += ["", "👇 <b>התשובה המוצעת</b> (לחיצה מעתיקה):", f"<code>{answer}</code>"]
     return "\n".join(lines)
+
+
+def send_alert(token: str, chat_id: str, text: str,
+               post_url: str, dashboard_url: str) -> int | None:
+    """Send one alert. Returns the Telegram message_id, or None on any failure.
+
+    Never raises: the sheet row is written regardless, and notified_at stays
+    empty so the next run retries.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": {"inline_keyboard": [[
+            {"text": "📄 לפוסט", "url": post_url},
+            {"text": "📊 לדשבורד", "url": dashboard_url},
+        ]]},
+    }
+    try:
+        resp = requests.post(API.format(token=token, method="sendMessage"),
+                             json=payload, timeout=20)
+        if resp.status_code != 200:
+            log.warning(f"Telegram sendMessage {resp.status_code}: {resp.text[:200]}")
+            return None
+        return resp.json().get("result", {}).get("message_id")
+    except Exception as e:
+        log.warning(f"Telegram send failed: {e}")
+        return None
