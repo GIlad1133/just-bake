@@ -1,0 +1,35 @@
+from datetime import datetime, timedelta, timezone
+from src.community_monitor import compute_cutoff, LOOKBACK_MIN_HOURS, LOOKBACK_MAX_HOURS
+
+NOW = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
+
+
+def _hours_back(cutoff: str) -> float:
+    return (NOW - datetime.fromisoformat(cutoff.replace("Z", "+00:00"))).total_seconds() / 3600
+
+
+def test_uses_the_last_run_plus_margin():
+    """Two hours since the last run, so the window covers it with slack."""
+    last = (NOW - timedelta(hours=2)).isoformat()
+    assert 3.0 <= _hours_back(compute_cutoff(last, NOW)) <= 3.1
+
+
+def test_overnight_gap_is_covered_without_a_fixed_constant():
+    """The 20:00->04:00 UTC gap is 8h. The window must stretch to cover it."""
+    last = (NOW - timedelta(hours=8)).isoformat()
+    assert _hours_back(compute_cutoff(last, NOW)) >= 8.0
+
+
+def test_never_shorter_than_the_floor():
+    last = (NOW - timedelta(minutes=5)).isoformat()
+    assert _hours_back(compute_cutoff(last, NOW)) >= LOOKBACK_MIN_HOURS
+
+
+def test_long_outage_is_capped_so_it_cannot_blow_the_budget():
+    last = (NOW - timedelta(days=9)).isoformat()
+    assert _hours_back(compute_cutoff(last, NOW)) == LOOKBACK_MAX_HOURS
+
+
+def test_missing_or_corrupt_meta_value_falls_back_to_the_floor():
+    for bad in ("", None, "not a date", "2026-13-45"):
+        assert _hours_back(compute_cutoff(bad, NOW)) == LOOKBACK_MIN_HOURS

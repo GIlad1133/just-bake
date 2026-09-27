@@ -2,10 +2,9 @@ name: Community Monitor
 
 on:
   schedule:
-    # 04:00/12:00/20:00 UTC = 07:00/15:00/23:00 Israel (summer). Three runs, not
-    # five: cost tracks posts examined, and the $5/month Apify tier does not
-    # stretch further. Must stay identical to the healthchecks.io cron.
-    - cron: '0 4,12,20 * * *'
+    # Every 2h, 04:00-20:00 UTC = 07:00-23:00 Israel (summer). Nine runs.
+    # Must stay identical to the healthchecks.io cron or that alarms falsely.
+    - cron: '0 4,6,8,10,12,14,16,18,20 * * *'
   workflow_dispatch:
 
 # Telegram replies are drained from a shared queue; two runs at once would

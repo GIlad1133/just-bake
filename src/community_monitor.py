@@ -198,15 +198,40 @@ def get_known_posts(ws) -> dict:
 
 # ─── Apify ────────────────────────────────────────────────────────────────────
 
-LOOKBACK_HOURS = 9      # the 20:00->04:00 UTC gap is 8h, not 4h
+# The gap between runs is not uniform: daytime runs are 2h apart but the
+# overnight gap (20:00->04:00 UTC) is 8h. A fixed lookback is therefore wrong
+# either way, so the window is derived from the last successful run.
+LOOKBACK_MIN_HOURS = 3        # floor: consecutive runs still overlap
+LOOKBACK_MAX_HOURS = 24       # ceiling: a long outage cannot blow the budget
+LOOKBACK_MARGIN_MINUTES = 30  # slack for GitHub's scheduling delay
+
+
+def compute_cutoff(last_run_iso: str, now=None) -> str:
+    """ISO timestamp for onlyPostsNewerThan, derived from the last successful run.
+
+    A skipped or delayed run would otherwise lose posts silently. Floored so two
+    runs in quick succession still overlap, capped so recovering from a week-long
+    outage does not request a huge billable window.
+    """
+    now = now or datetime.now(timezone.utc)
+    floor = now - timedelta(hours=LOOKBACK_MIN_HOURS)
+    ceiling = now - timedelta(hours=LOOKBACK_MAX_HOURS)
+    try:
+        last = datetime.fromisoformat((last_run_iso or "").replace("Z", "+00:00"))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        cutoff = last - timedelta(minutes=LOOKBACK_MARGIN_MINUTES)
+    except (ValueError, AttributeError, TypeError):
+        cutoff = floor
+    cutoff = min(cutoff, floor)     # window is never shorter than the floor
+    cutoff = max(cutoff, ceiling)   # window is never longer than the ceiling
+    return cutoff.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 POSTS_PER_GROUP = 3     # deliberate coverage cap; cost tracks posts examined, not frequency
 
 
-def build_run_input(group_urls: list) -> dict:
+def build_run_input(group_urls: list, cutoff: str) -> dict:
     """Apify input. onlyPostsNewerThan filters BEFORE billing (verified 16/09/2026),
     so it is the only lever that stops us re-buying posts already in the sheet."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)) \
-        .replace(microsecond=0).isoformat().replace("+00:00", "Z")
     return {
         "startUrls": [{"url": url} for url in group_urls],
         "resultsLimit": POSTS_PER_GROUP,
@@ -217,9 +242,9 @@ def build_run_input(group_urls: list) -> dict:
     }
 
 
-def fetch_posts(group_urls: list, apify_token: str) -> list:
+def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
     client = ApifyClient(apify_token)
-    run_input = build_run_input(group_urls)
+    run_input = build_run_input(group_urls, cutoff)
     log.info(f"Fetching from {len(group_urls)} groups since {run_input['onlyPostsNewerThan']}")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
@@ -535,7 +560,8 @@ def run_monitor():
         answer_templates.load_facts(spreadsheet))
 
     # Fetch posts
-    posts = fetch_posts(monitoring_groups, apify_token)
+    cutoff = compute_cutoff(sheet_meta.get_meta(spreadsheet, "last_run_at", ""))
+    posts = fetch_posts(monitoring_groups, apify_token, cutoff)
     claude = anthropic.Anthropic(api_key=anthropic_key)
     saved = updated = alerted = 0
 
@@ -607,6 +633,8 @@ def run_monitor():
                 updated += 1
 
     log.info(f"Done. Saved {saved} new posts, updated {updated} existing posts.")
+    sheet_meta.set_meta(spreadsheet, "last_run_at",
+                        datetime.now(timezone.utc).replace(microsecond=0).isoformat())
     telegram_notify.ping_healthcheck(cfg["healthcheck_url"])
 
     # Last scheduled run of the day (20:00 UTC) sends the summary. Its absence
