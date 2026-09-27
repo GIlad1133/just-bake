@@ -79,3 +79,9 @@ def test_skip_and_bad_are_different_kinds():
     passed = classify_reply({"reaction": "\U0001F440", "reply_to": 42})["kind"]
     wrong = classify_reply({"reaction": "\U0001F44E", "reply_to": 42})["kind"]
     assert passed != wrong
+
+
+def test_poop_is_a_pass_for_gilad_not_a_complaint():
+    """Gilad's own mapping, stated 27/09: 💩 means 'it's good but I won't answer
+    it'. Conventionally it reads negative, so this is deliberate and load-bearing."""
+    assert classify_reply({"reaction": "\U0001F4A9", "reply_to": 42})["kind"] == "skip"
