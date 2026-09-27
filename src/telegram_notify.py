@@ -23,8 +23,12 @@ ANSWER_CHARS = 700
 # They are only delivered when the bot is an administrator in the chat, which is
 # impossible in a 1:1 chat, so alerts go to a group where it is.
 ALLOWED_UPDATES = ["message", "message_reaction"]
-POSITIVE_REACTIONS = {"\U0001F44D", "\u2764", "\U0001F525", "\U0001F389", "\U0001F4AF", "\U0001F64F"}
-NEGATIVE_REACTIONS = {"\U0001F44E", "\U0001F4A9", "\U0001F92E", "\U0001F610"}
+# Three distinct meanings, one tap each. Keeping "the score was wrong" separate
+# from "I am not answering this" matters: folding the second into the first
+# teaches the rubric to downgrade good posts just because Gilad was busy.
+POSITIVE_REACTIONS = {"\U0001F44D", "\u2764", "\U0001F525", "\U0001F389", "\U0001F4AF", "\U0001F64F", "\U0001F44C"}
+NEGATIVE_REACTIONS = {"\U0001F44E", "\U0001F4A9", "\U0001F92E", "\U0001F921"}
+NEUTRAL_REACTIONS  = {"\U0001F440", "\U0001F937", "\U0001FAE1", "\U0001F610", "\U0001F971"}
 
 LEAD_THRESHOLD = 6   # lowered from 7 on 27/09: a Sukkot event organiser needing 10 pizzas scored 6 and did not alert
 EXPERTISE_THRESHOLD = 9

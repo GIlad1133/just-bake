@@ -86,6 +86,10 @@ def classify_reply(reply: dict) -> dict:
             return {"kind": "good", "target": target, "emoji": emoji}
         if emoji in telegram_notify.NEGATIVE_REACTIONS:
             return {"kind": "bad", "target": target, "emoji": emoji}
+        if emoji in telegram_notify.NEUTRAL_REACTIONS:
+            # "Fair catch, I am just not answering it." Deliberately NOT a
+            # calibration signal — see NEUTRAL_REACTIONS.
+            return {"kind": "skip", "target": target, "emoji": emoji}
         return {"kind": "unclear", "why": f"reaction {emoji} not mapped"}
 
     if not text:
@@ -171,15 +175,18 @@ def apply_replies(spreadsheet, ws, cfg) -> int:
             row_num = by_msg_id.get(str(action["target"]))
             if row_num:
                 ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "skipped")
-                ack = "⏭ דולג. לא נשמר כתשובה שלך"
+                ack = "👀 דולג. הניקוד נשאר תקין, זה לא נכנס לכיול"
             else:
                 ack = "⚠️ לא מצאתי את הפוסט"
 
         elif kind == "unclear":
             # Never drop input silently. Three messages were lost this way.
-            ack = ("🤔 לא הבנתי. כדי לשמור תשובה, תעשה Reply על ההתראה ותכתוב אותה.\n"
-                   "👍 או 👎 על התראה = פידבק על הניקוד. /skip = לדלג.\n"
-                   "/fact <שורה> מוסיף עובדה, /order <טקסט> משכתב תבנית.")
+            ack = ("🤔 לא הבנתי. הדרכים לענות לי:\n"
+                   "Reply עם טקסט = שומר את התשובה שלך\n"
+                   "👍 = הניקוד היה טוב\n"
+                   "👀 = ראיתי, לא עונה. הניקוד בסדר\n"
+                   "👎 = הניקוד היה שגוי, אל תביא לי כאלה\n"
+                   "/fact <שורה> מוסיף עובדה · /order <טקסט> משכתב תבנית")
 
         elif kind == "fact":
             spreadsheet.worksheet(answer_templates.FACTS_SHEET).append_row([action["payload"]])

@@ -61,3 +61,21 @@ def test_nothing_is_ever_silently_dropped():
         out = classify_reply(event)
         assert out["kind"] == "unclear", out
         assert out.get("why"), "an unclear verdict must say why, so the ack can explain"
+
+
+def test_eyes_means_pass_not_wrong_scoring():
+    """'Good question, not answering it' must NOT feed the calibration signal.
+    Folding it into 👎 would teach the rubric to downgrade good posts."""
+    out = classify_reply({"reaction": "\U0001F440", "reply_to": 42})
+    assert out["kind"] == "skip"
+
+
+def test_shrug_also_means_pass():
+    assert classify_reply({"reaction": "\U0001F937", "reply_to": 42})["kind"] == "skip"
+
+
+def test_skip_and_bad_are_different_kinds():
+    """The whole point: these two must never collapse into one signal."""
+    passed = classify_reply({"reaction": "\U0001F440", "reply_to": 42})["kind"]
+    wrong = classify_reply({"reaction": "\U0001F44E", "reply_to": 42})["kind"]
+    assert passed != wrong
