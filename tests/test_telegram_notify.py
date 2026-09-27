@@ -54,7 +54,14 @@ def test_notify_on_high_expertise():
 
 
 def test_no_notify_below_both_thresholds():
-    assert should_notify(lead_score=6, expertise_score=8, notified_at="") is False
+    assert should_notify(lead_score=5, expertise_score=8, notified_at="") is False
+
+
+def test_lead_six_alerts():
+    """Calibration 27/09: a Sukkot event organiser needing 10 pizzas scored 6.
+    She never said 'looking for a supplier', so the rubric gave 6 — but she needed
+    one. The threshold follows need, not phrasing."""
+    assert should_notify(lead_score=6, expertise_score=0, notified_at="") is True
 
 
 def test_no_notify_when_already_notified():

@@ -18,7 +18,7 @@ API = "https://api.telegram.org/bot{token}/{method}"
 EXCERPT_CHARS = 180
 ANSWER_CHARS = 700
 
-LEAD_THRESHOLD = 7
+LEAD_THRESHOLD = 6   # lowered from 7 on 27/09: a Sukkot event organiser needing 10 pizzas scored 6 and did not alert
 EXPERTISE_THRESHOLD = 9
 
 PATH_LABELS = {
