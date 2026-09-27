@@ -177,3 +177,50 @@ def test_network_failure_returns_empty_and_keeps_offset(mocker):
     replies, next_offset = fetch_replies("tok", "1", 12)
     assert replies == []
     assert next_offset == 12
+
+
+def _reaction(uid, user_id, emoji, on_message):
+    return {"update_id": uid, "message_reaction": {
+        "message_id": on_message, "user": {"id": user_id},
+        "new_reaction": [{"type": "emoji", "emoji": emoji}]}}
+
+
+def test_reactions_are_returned_with_their_target(mocker):
+    """Reactions only arrive when the bot is an admin in the chat, which is why
+    alerts go to a group rather than a 1:1 chat."""
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": [
+        _reaction(1, 314244953, "\U0001F44D", 42)]}
+    events, _ = fetch_replies("tok", "314244953", 0)
+    assert events[0]["reaction"] == "\U0001F44D"
+    assert events[0]["reply_to"] == 42
+
+
+def test_reactions_from_other_people_are_ignored(mocker):
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": [
+        _reaction(1, 999999999, "\U0001F44D", 42)]}
+    events, next_offset = fetch_replies("tok", "314244953", 0)
+    assert events == []
+    assert next_offset == 2
+
+
+def test_reactions_are_requested_explicitly(mocker):
+    """Telegram does not send message_reaction unless allowed_updates names it."""
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": []}
+    fetch_replies("tok", "1", 0)
+    assert "message_reaction" in get.call_args.kwargs["params"]["allowed_updates"]
+
+
+def test_auth_is_on_the_sender_not_the_chat(mocker):
+    """In a group the destination chat id is negative and is NOT the sender id."""
+    get = mocker.patch("src.telegram_notify.requests.get")
+    get.return_value.status_code = 200
+    get.return_value.json.return_value = {"ok": True, "result": [
+        _update(1, 314244953, "from Gilad in the group")]}
+    events, _ = fetch_replies("tok", "314244953", 0)   # owner id, not -5305503048
+    assert len(events) == 1

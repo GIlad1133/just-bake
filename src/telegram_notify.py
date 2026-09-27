@@ -8,6 +8,7 @@ No Sheets or Apify imports -- this module only knows about Telegram.
 """
 
 import html
+import json
 import logging
 
 import requests
@@ -17,6 +18,13 @@ log = logging.getLogger(__name__)
 API = "https://api.telegram.org/bot{token}/{method}"
 EXCERPT_CHARS = 180
 ANSWER_CHARS = 700
+
+# Reactions are the cheapest feedback Gilad can give — one tap instead of typing.
+# They are only delivered when the bot is an administrator in the chat, which is
+# impossible in a 1:1 chat, so alerts go to a group where it is.
+ALLOWED_UPDATES = ["message", "message_reaction"]
+POSITIVE_REACTIONS = {"\U0001F44D", "\u2764", "\U0001F525", "\U0001F389", "\U0001F4AF", "\U0001F64F"}
+NEGATIVE_REACTIONS = {"\U0001F44E", "\U0001F4A9", "\U0001F92E", "\U0001F610"}
 
 LEAD_THRESHOLD = 6   # lowered from 7 on 27/09: a Sukkot event organiser needing 10 pizzas scored 6 and did not alert
 EXPERTISE_THRESHOLD = 9
@@ -109,20 +117,25 @@ def send_plain(token: str, chat_id: str, text: str) -> int | None:
         return None
 
 
-def fetch_replies(token: str, chat_id: str, offset: int) -> tuple[list, int]:
-    """Drain queued updates. Returns (owner_messages, next_offset).
+def fetch_replies(token: str, owner_id: str, offset: int) -> tuple[list, int]:
+    """Drain queued updates. Returns (owner_events, next_offset).
 
     Telegram queues updates for 24 hours, so a scheduled run is enough — no
     webhook and no always-on listener.
 
-    from.id is set by Telegram's servers and cannot be spoofed by a sender, so
-    the equality check below is the whole authorisation model. The offset
-    advances past ignored updates too, otherwise a stranger's message would be
-    re-fetched forever.
+    Authorisation is on the SENDER (owner_id), never the chat: once alerts go to
+    a group, the destination chat id and the sender's user id are different
+    numbers. from.id is set by Telegram's servers and cannot be spoofed.
+
+    The offset advances past ignored updates too, otherwise a stranger's message
+    would be re-fetched forever.
     """
     try:
-        resp = requests.get(API.format(token=token, method="getUpdates"),
-                            params={"offset": offset, "timeout": 0}, timeout=30)
+        resp = requests.get(
+            API.format(token=token, method="getUpdates"),
+            params={"offset": offset, "timeout": 0,
+                    "allowed_updates": json.dumps(ALLOWED_UPDATES)},
+            timeout=30)
         if resp.status_code != 200:
             log.warning(f"Telegram getUpdates {resp.status_code}: {resp.text[:200]}")
             return [], offset
@@ -134,18 +147,30 @@ def fetch_replies(token: str, chat_id: str, offset: int) -> tuple[list, int]:
     if not updates:
         return [], offset
 
-    owner = str(chat_id)
-    replies = []
+    owner = str(owner_id)
+    events = []
     for update in updates:
-        msg = update.get("message") or {}
-        if str((msg.get("from") or {}).get("id")) != owner:
-            continue
-        replies.append({
-            "text": (msg.get("text") or "").strip(),
-            "reply_to": (msg.get("reply_to_message") or {}).get("message_id"),
-            "message_id": msg.get("message_id"),
-        })
+        if "message" in update:
+            msg = update["message"]
+            if str((msg.get("from") or {}).get("id")) != owner:
+                continue
+            events.append({
+                "text": (msg.get("text") or "").strip(),
+                "reply_to": (msg.get("reply_to_message") or {}).get("message_id"),
+                "reaction": None,
+            })
+        elif "message_reaction" in update:
+            mr = update["message_reaction"]
+            if str((mr.get("user") or {}).get("id")) != owner:
+                continue
+            emojis = [r.get("emoji") for r in (mr.get("new_reaction") or [])
+                      if r.get("type") == "emoji"]
+            events.append({
+                "text": "",
+                "reply_to": mr.get("message_id"),
+                "reaction": emojis[0] if emojis else None,
+            })
 
     next_offset = max(u["update_id"] for u in updates) + 1
-    log.info(f"Drained {len(updates)} updates, {len(replies)} from owner")
-    return replies, next_offset
+    log.info(f"Drained {len(updates)} updates, {len(events)} from owner")
+    return events, next_offset

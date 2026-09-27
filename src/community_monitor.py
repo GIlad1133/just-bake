@@ -68,30 +68,51 @@ TEMPLATE_COMMANDS = {"/order": "order", "/mentoring": "mentoring",
 
 
 def classify_reply(reply: dict) -> dict:
-    """Turn a raw Telegram reply into an action. Never raises."""
+    """Turn a raw Telegram event into an action. Never raises.
+
+    Every branch returns something actionable or 'unclear' — never a silent
+    drop. Three of Gilad's messages were lost on 27/09 because unrecognised
+    input was discarded while the offset advanced past it.
+    """
     text = (reply.get("text") or "").strip()
     target = reply.get("reply_to")
+    emoji = reply.get("reaction")
+
+    # A tap is the cheapest feedback there is, so it gets first-class handling.
+    if emoji:
+        if not target:
+            return {"kind": "unclear", "why": "reaction with no target"}
+        if emoji in telegram_notify.POSITIVE_REACTIONS:
+            return {"kind": "good", "target": target, "emoji": emoji}
+        if emoji in telegram_notify.NEGATIVE_REACTIONS:
+            return {"kind": "bad", "target": target, "emoji": emoji}
+        return {"kind": "unclear", "why": f"reaction {emoji} not mapped"}
 
     if not text:
-        return {"kind": "ignored"}
+        return {"kind": "unclear", "why": "empty message"}
 
-    if text in ("/bad", "/skip"):
-        return {"kind": "bad", "target": target} if target else {"kind": "ignored"}
+    if text == "/skip":
+        return {"kind": "skip", "target": target} if target else {"kind": "unclear", "why": "/skip needs a reply"}
+
+    if text == "/bad":
+        return {"kind": "bad", "target": target} if target else {"kind": "unclear", "why": "/bad needs a reply"}
 
     head, _, rest = text.partition(" ")
     payload = rest.strip()
 
     if head == "/fact":
-        return {"kind": "fact", "payload": payload} if payload else {"kind": "ignored"}
+        return ({"kind": "fact", "payload": payload} if payload
+                else {"kind": "unclear", "why": "/fact needs text after it"})
 
     if head in TEMPLATE_COMMANDS:
         return ({"kind": "template", "path": TEMPLATE_COMMANDS[head], "payload": payload}
-                if payload else {"kind": "ignored"})
+                if payload else {"kind": "unclear", "why": f"{head} needs text after it"})
 
     if text.startswith("/"):
-        return {"kind": "ignored"}
+        return {"kind": "unclear", "why": f"unknown command {head}"}
 
-    return {"kind": "answer", "target": target, "payload": text} if target else {"kind": "ignored"}
+    return ({"kind": "answer", "target": target, "payload": text} if target
+            else {"kind": "unclear", "why": "free text with no reply target"})
 
 
 def apply_replies(spreadsheet, ws, cfg) -> int:
@@ -107,7 +128,7 @@ def apply_replies(spreadsheet, ws, cfg) -> int:
         log.warning("Bad telegram_offset in Meta tab; restarting from 0")
         offset = 0
     replies, next_offset = telegram_notify.fetch_replies(
-        cfg["telegram_token"], cfg["telegram_chat_id"], offset)
+        cfg["telegram_token"], cfg["telegram_owner_id"], offset)
     rows = ws.get_all_values()
     by_msg_id = {}
     for i, row in enumerate(rows[1:], start=2):
@@ -134,7 +155,31 @@ def apply_replies(spreadsheet, ws, cfg) -> int:
             row_num = by_msg_id.get(str(action["target"]))
             if row_num:
                 ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "bad_score")
-                ack = "✅ סומן כניקוד שגוי"
+                ack = "👎 סומן כניקוד שגוי, ייכנס לכיול"
+            else:
+                ack = "⚠️ לא מצאתי את הפוסט"
+
+        elif kind == "good":
+            row_num = by_msg_id.get(str(action["target"]))
+            if row_num:
+                ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "approved")
+                ack = "👍 נרשם. הניקוד והתשובה היו טובים"
+            else:
+                ack = "⚠️ לא מצאתי את הפוסט"
+
+        elif kind == "skip":
+            row_num = by_msg_id.get(str(action["target"]))
+            if row_num:
+                ws.update_cell(row_num, COMMUNITY_HEADERS.index("status") + 1, "skipped")
+                ack = "⏭ דולג. לא נשמר כתשובה שלך"
+            else:
+                ack = "⚠️ לא מצאתי את הפוסט"
+
+        elif kind == "unclear":
+            # Never drop input silently. Three messages were lost this way.
+            ack = ("🤔 לא הבנתי. כדי לשמור תשובה, תעשה Reply על ההתראה ותכתוב אותה.\n"
+                   "👍 או 👎 על התראה = פידבק על הניקוד. /skip = לדלג.\n"
+                   "/fact <שורה> מוסיף עובדה, /order <טקסט> משכתב תבנית.")
 
         elif kind == "fact":
             spreadsheet.worksheet(answer_templates.FACTS_SHEET).append_row([action["payload"]])
@@ -536,6 +581,9 @@ def run_monitor():
     cfg = {
         "telegram_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
         "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),
+        # Destination and sender are different numbers once alerts go to a group:
+        # chat_id is negative, owner_id is Gilad's user id. Auth uses the sender.
+        "telegram_owner_id": os.getenv("TELEGRAM_OWNER_ID", os.getenv("TELEGRAM_CHAT_ID", "")),
         "dashboard_url": os.getenv("DASHBOARD_URL", "https://just-bake.streamlit.app/Community"),
         "healthcheck_url": os.getenv("HEALTHCHECK_URL", ""),
     }
