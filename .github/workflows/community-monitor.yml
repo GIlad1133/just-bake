@@ -43,7 +43,7 @@ jobs:
           TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
           DASHBOARD_URL: https://just-bake.streamlit.app/Community
-        run: python src/community_monitor.py
+        run: python -m src.community_monitor
 
       - name: Alert on failure
         if: failure()
