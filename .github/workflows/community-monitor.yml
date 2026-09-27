@@ -2,8 +2,16 @@ name: Community Monitor
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # 6:00 UTC = 8:00 Israel (9:00 DST)
-  workflow_dispatch:        # Manual trigger from GitHub Actions tab
+    # Every 2h, 04:00-20:00 UTC = 07:00-23:00 Israel (summer). Nine runs.
+    # Must stay identical to the healthchecks.io cron or that alarms falsely.
+    - cron: '0 4,6,8,10,12,14,16,18,20 * * *'
+  workflow_dispatch:
+
+# Telegram replies are drained from a shared queue; two runs at once would
+# double-process them. Queue rather than overlap.
+concurrency:
+  group: community-monitor
+  cancel-in-progress: false
 
 jobs:
   monitor:
@@ -30,7 +38,22 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
           MONITORING_GROUPS: ${{ secrets.MONITORING_GROUPS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          DASHBOARD_URL: https://just-bake.streamlit.app/Community
         run: python src/community_monitor.py
+
+      - name: Alert on failure
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d text="⚠️ Community monitor נכשל. ריצה ${{ github.run_id }}"
+          if [ -n "${{ secrets.HEALTHCHECK_URL }}" ]; then
+            curl -s -m 10 "${{ secrets.HEALTHCHECK_URL }}/fail" || true
+          fi
 
       - name: Upload logs on failure
         if: failure()

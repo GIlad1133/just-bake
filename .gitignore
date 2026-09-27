@@ -21,10 +21,12 @@ env/
 *.swp
 *.swo
 
-# Temporary test scripts
+# Temporary throwaway scripts at the repo ROOT only.
+# Leading slash matters: a bare test_*.py also matched tests/test_*.py and
+# silently blocked the real test suite from being committed.
 check_*.py
 scan_*.py
-test_*.py
+/test_*.py
 fix_*.py
 verify_*.py
 process_*.py
