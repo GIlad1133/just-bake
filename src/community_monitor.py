@@ -255,7 +255,8 @@ def get_known_posts(ws) -> dict:
 # either way, so the window is derived from the last successful run.
 LOOKBACK_MIN_HOURS = 3        # floor: consecutive runs still overlap
 LOOKBACK_MAX_HOURS = 24       # ceiling: a long outage cannot blow the budget
-LOOKBACK_MARGIN_MINUTES = 30  # slack for GitHub's scheduling delay
+LOOKBACK_MARGIN_MINUTES = 30  # slack for scheduling delay
+EMPTY_STREAK_ALARM = 3        # consecutive all-groups-unreadable runs before alarming
 
 
 def compute_cutoff(last_run_iso: str, now=None) -> str:
@@ -284,13 +285,14 @@ POSTS_PER_GROUP = 3     # deliberate coverage cap; cost tracks posts examined, n
 def build_run_input(group_urls: list, cutoff: str) -> dict:
     """Apify input. onlyPostsNewerThan filters BEFORE billing (verified 16/09/2026),
     so it is the only lever that stops us re-buying posts already in the sheet."""
+    # These four fields are the actor's ENTIRE input as of build 0.0.375
+    # (28/09/2026). maxComments, sortOrder and proxyConfiguration were removed
+    # upstream; we were still sending them, and no longer receive comments at all.
     return {
         "startUrls": [{"url": url} for url in group_urls],
         "resultsLimit": POSTS_PER_GROUP,
-        "maxComments": 3,
-        "sortOrder": "RECENT_POSTS",
+        "viewOption": "CHRONOLOGICAL",
         "onlyPostsNewerThan": cutoff,
-        "proxyConfiguration": {"useApifyProxy": True},
     }
 
 
@@ -300,6 +302,17 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
     log.info(f"Fetching from {len(group_urls)} groups since {run_input['onlyPostsNewerThan']}")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+
+    # The actor emits one stub per group it could not read, carrying
+    # error="no_items". Counting those as "zero new posts" is how a fully
+    # blocked scrape reported success and pinged the healthcheck green.
+    errors = [i for i in items if i.get("error")]
+    for e in errors:
+        log.warning(f"Group unreadable: {e.get('inputUrl')} -> "
+                    f"{e.get('error')}: {e.get('errorDescription')}")
+    if errors:
+        log.warning(f"{len(errors)}/{len(group_urls)} groups returned no data")
+
     valid = [item for item in items if item.get("text") and item.get("url")]
     for item in valid:
         attachments = item.get("attachments") or []
@@ -308,8 +321,9 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
              for a in attachments if a.get("thumbnail") or a.get("photo_image")),
             None,
         )
-    log.info(f"Got {len(valid)} posts ({sum(1 for p in valid if p.get('image_url'))} with images)")
-    return valid
+    log.info(f"Got {len(valid)} posts ({sum(1 for p in valid if p.get('image_url'))} "
+             f"with images), {len(errors)} groups unreadable")
+    return valid, len(errors)
 
 
 # ─── Pre-filter (no Claude call needed) ───────────────────────────────────────
@@ -616,7 +630,7 @@ def run_monitor():
 
     # Fetch posts
     cutoff = compute_cutoff(sheet_meta.get_meta(spreadsheet, "last_run_at", ""))
-    posts = fetch_posts(monitoring_groups, apify_token, cutoff)
+    posts, unreadable = fetch_posts(monitoring_groups, apify_token, cutoff)
     claude = anthropic.Anthropic(api_key=anthropic_key)
     saved = updated = alerted = 0
 
@@ -688,6 +702,25 @@ def run_monitor():
                 updated += 1
 
     log.info(f"Done. Saved {saved} new posts, updated {updated} existing posts.")
+    # A quiet two-hour window legitimately yields zero posts, so one empty run
+    # proves nothing. Several in a row while every group is unreadable does.
+    empty_streak = 0
+    if unreadable >= len(monitoring_groups) and not posts:
+        try:
+            empty_streak = int(sheet_meta.get_meta(spreadsheet, "empty_streak", "0") or 0) + 1
+        except ValueError:
+            empty_streak = 1
+    sheet_meta.set_meta(spreadsheet, "empty_streak", empty_streak)
+
+    if empty_streak >= EMPTY_STREAK_ALARM:
+        msg = (f"⚠️ {empty_streak} ריצות רצופות שבהן כל {len(monitoring_groups)} הקבוצות "
+               f"החזירו 'no data'. הסריקה כנראה חסומה, לא שקטה.")
+        log.error(msg)
+        if cfg.get("telegram_token"):
+            telegram_notify.send_plain(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
+        telegram_notify.ping_healthcheck(cfg["healthcheck_url"], suffix="/fail")
+        return saved
+
     sheet_meta.set_meta(spreadsheet, "last_run_at",
                         datetime.now(timezone.utc).replace(microsecond=0).isoformat())
     telegram_notify.ping_healthcheck(cfg["healthcheck_url"])

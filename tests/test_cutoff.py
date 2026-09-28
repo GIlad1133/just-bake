@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from src.community_monitor import compute_cutoff, LOOKBACK_MIN_HOURS, LOOKBACK_MAX_HOURS
+from src.community_monitor import (compute_cutoff, build_run_input,
+                                   LOOKBACK_MIN_HOURS, LOOKBACK_MAX_HOURS)
 
 NOW = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 
@@ -33,3 +34,11 @@ def test_long_outage_is_capped_so_it_cannot_blow_the_budget():
 def test_missing_or_corrupt_meta_value_falls_back_to_the_floor():
     for bad in ("", None, "not a date", "2026-13-45"):
         assert _hours_back(compute_cutoff(bad, NOW)) == LOOKBACK_MIN_HOURS
+
+
+def test_run_input_has_only_the_four_fields_the_actor_accepts():
+    """Build 0.0.375 (28/09/2026) removed maxComments, sortOrder and
+    proxyConfiguration. We were still sending all three."""
+    inp = build_run_input(["https://fb.com/groups/1"], "2026-09-28T00:00:00Z")
+    assert set(inp) == {"startUrls", "resultsLimit", "viewOption", "onlyPostsNewerThan"}
+    assert inp["viewOption"] == "CHRONOLOGICAL"
