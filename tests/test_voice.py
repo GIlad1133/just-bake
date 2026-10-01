@@ -1,6 +1,17 @@
 import json
+from types import SimpleNamespace
 
-from src.voice import load_voice, parse_canned
+from src.voice import (
+    Voice,
+    append_examples,
+    build_messages,
+    learned_examples,
+    load_voice,
+    parse_canned,
+    recent_group_replies,
+    select_examples,
+    write_reply,
+)
 
 
 def _write_voice(tmp_path, examples, rules="כלל אחד", canned="## recipe\nwhen: מתכון\n\nטקסט"):
@@ -34,7 +45,14 @@ def test_canned_keeps_text_verbatim_and_reads_when():
     assert canned["other"]["text"] == "y"
 
 
-from src.voice import select_examples
+def test_examples_jsonl_skips_bad_lines_but_loads_good_ones(tmp_path):
+    (tmp_path / "voice.md").write_text("כלל", encoding="utf-8")
+    (tmp_path / "canned.md").write_text("## recipe\nwhen: x\n\nטקסט", encoding="utf-8")
+    (tmp_path / "examples.jsonl").write_text(
+        '{"id": "good1", "text": "a"}\nnot json at all\n[]\n{"id": "good2", "text": "b"}\n',
+        encoding="utf-8")
+    voice = load_voice(tmp_path)
+    assert [e["id"] for e in voice.examples] == ["good1", "good2"]
 
 
 def _ex(i, situation="tech_answer", audience="taboon_group", **kw):
@@ -58,6 +76,11 @@ def test_skips_null_text_ignored_and_not_bot_use():
     assert [e["id"] for e in select_examples(examples, "tech_answer", "taboon_group", "s")] == ["e4"]
 
 
+def test_skips_whitespace_only_text():
+    examples = [_ex(1, text="   "), _ex(2)]
+    assert [e["id"] for e in select_examples(examples, "tech_answer", "taboon_group", "s")] == ["e2"]
+
+
 def test_same_seed_same_pick_different_seed_varies():
     examples = [_ex(i) for i in range(12)]
     a = select_examples(examples, "tech_answer", "taboon_group", "post-A", k=4)
@@ -65,11 +88,6 @@ def test_same_seed_same_pick_different_seed_varies():
     picks = {tuple(e["id"] for e in select_examples(examples, "tech_answer", "taboon_group", f"p{i}", k=4))
              for i in range(10)}
     assert len(picks) > 1  # variety is a hard requirement
-
-
-from types import SimpleNamespace
-
-from src.voice import Voice, build_messages, write_reply
 
 
 class FakeClaude:
@@ -103,6 +121,11 @@ def test_recent_and_facts_go_into_system():
     system, _ = build_messages(_voice(), "p", [], recent=["מוזמן אליי לפתח תקווה"], facts=["כדור 300 גרם"])
     assert "מוזמן אליי לפתח תקווה" in system
     assert "כדור 300 גרם" in system
+
+
+def test_empty_post_text_becomes_placeholder():
+    _, messages = build_messages(_voice(), "   ", [], recent=[], facts=[])
+    assert messages[-1]["content"] == "(פוסט בלי טקסט)"
 
 
 def test_canned_is_returned_verbatim_without_calling_claude():
@@ -141,9 +164,6 @@ def test_claude_error_warns_and_never_raises():
     assert draft is None and "נכשל" in warning
 
 
-from src.voice import learned_examples, append_examples, recent_group_replies
-
-
 def _row(url, my_answer, **kw):
     base = {"post_url": url, "my_answer": my_answer, "post_text": "הפוסט", "group_url": "g1",
             "lead_path": "order", "situation": "", "posted_date": "", "date_fetched": "30/09/2026",
@@ -168,6 +188,13 @@ def test_situation_column_wins_over_lead_path():
     assert new[0]["situation"] == "where_to_buy"
 
 
+def test_no_answer_situation_falls_back_when_gilad_answered():
+    """A row left over from before an answer was written still says
+    situation=no_answer; once my_answer is filled in, that label is stale."""
+    new = learned_examples([_row("u1", "מוזמן אליי", situation="no_answer")], known_urls=set())
+    assert new[0]["situation"] == "lead_order"
+
+
 def test_same_url_twice_in_rows_is_learned_once():
     assert len(learned_examples([_row("u1", "a"), _row("u1", "a")], known_urls=set())) == 1
 
@@ -178,6 +205,18 @@ def test_append_writes_jsonl(tmp_path):
     append_examples(path, [{"id": "new", "text": "שלום"}])
     lines = path.read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[1]) == {"id": "new", "text": "שלום"}
+
+
+def test_append_adds_missing_trailing_newline_first(tmp_path):
+    """A file saved without a trailing newline must not get the next JSON
+    object glued onto its last line."""
+    (tmp_path / "voice.md").write_text("כלל", encoding="utf-8")
+    (tmp_path / "canned.md").write_text("## recipe\nwhen: x\n\nטקסט", encoding="utf-8")
+    path = tmp_path / "examples.jsonl"
+    path.write_text('{"id": "old", "text": "a"}', encoding="utf-8")  # no trailing newline
+    append_examples(path, [{"id": "new", "text": "b"}])
+    voice = load_voice(tmp_path)
+    assert [e["id"] for e in voice.examples] == ["old", "new"]
 
 
 def test_recent_group_replies_prefers_gilads_text_and_limits():

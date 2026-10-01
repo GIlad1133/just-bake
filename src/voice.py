@@ -38,14 +38,32 @@ def parse_canned(md: str) -> dict:
     return out
 
 
+def _load_examples(raw: str) -> list:
+    """One bad line (a typo in a hand-edited row, a stray '[]') must not take
+    down every other example -- skip it and keep going."""
+    examples = []
+    for n, line in enumerate(raw.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            parsed = json.loads(line)
+            if not isinstance(parsed, dict):
+                raise ValueError("not a JSON object")
+        except Exception as e:
+            log.warning(f"examples.jsonl line {n} skipped: {e}")
+            continue
+        examples.append(parsed)
+    return examples
+
+
 def load_voice(path: Path = VOICE_DIR) -> "Voice | None":
-    """None when the folder is missing or broken. The caller still alerts,
-    just without a draft -- a lead must never be dropped over a voice file."""
+    """None when the folder is missing or unreadable, or voice.md is empty.
+    The caller still alerts, just without a draft -- a lead must never be
+    dropped over a voice file. A bad line inside examples.jsonl does not
+    count as broken; see _load_examples."""
     try:
         rules = (path / "voice.md").read_text(encoding="utf-8").strip()
-        examples = [json.loads(line) for line in
-                    (path / "examples.jsonl").read_text(encoding="utf-8").splitlines()
-                    if line.strip()]
+        examples = _load_examples((path / "examples.jsonl").read_text(encoding="utf-8"))
         canned = parse_canned((path / "canned.md").read_text(encoding="utf-8"))
     except Exception as e:
         log.warning(f"Voice folder unusable ({e})")
@@ -61,7 +79,7 @@ EXAMPLES_PER_DRAFT = 4
 
 def _usable(example: dict, situation: str) -> bool:
     return (example.get("situation") == situation
-            and bool(example.get("text"))
+            and bool((example.get("text") or "").strip())
             and example.get("bot_use", True)
             and not example.get("ignored"))
 
@@ -105,7 +123,7 @@ def build_messages(voice: Voice, post_text: str, examples: list,
     for e in examples:
         messages.append({"role": "user", "content": e.get("context") or f"({e['situation']})"})
         messages.append({"role": "assistant", "content": e["text"]})
-    messages.append({"role": "user", "content": post_text})
+    messages.append({"role": "user", "content": post_text.strip() or "(פוסט בלי טקסט)"})
     return system, messages
 
 
@@ -117,6 +135,8 @@ def write_reply(post_text: str, situation: str, audience: str, canned_name,
         return None, "⚠️ בלי קול, אין טיוטה"
     if canned_name and canned_name in voice.canned:
         return voice.canned[canned_name]["text"], None
+    if canned_name:
+        log.info(f"Canned answer '{canned_name}' not found, drafting instead")
     if situation == "no_answer":
         return None, None
 
@@ -159,7 +179,11 @@ def learned_examples(rows: list, known_urls: set) -> list:
             continue
         seen.add(url)
         situation = r.get("situation")
-        if situation not in BOT_SITUATIONS:
+        # A row can predate the answer: "no_answer" written when fetched, then
+        # my_answer filled in later. Since we got here with a non-empty text,
+        # that label is stale -- fall back to the lead_path mapping like any
+        # other missing/unknown situation.
+        if situation not in BOT_SITUATIONS or situation == "no_answer":
             situation = LEAD_PATH_SITUATION.get(r.get("lead_path"), "tech_answer")
         new.append({"id": f"tg-{url}", "situation": situation,
                     "audience": audience_for(r.get("group_url", "")),
@@ -171,7 +195,13 @@ def learned_examples(rows: list, known_urls: set) -> list:
 
 
 def append_examples(path: Path, examples: list) -> None:
+    """Appending to a file that was saved without a trailing newline must not
+    glue the first new JSON object onto the old last line."""
+    needs_newline = (path.exists() and path.stat().st_size > 0
+                     and not path.read_bytes().endswith(b"\n"))
     with open(path, "a", encoding="utf-8") as f:
+        if needs_newline:
+            f.write("\n")
         for e in examples:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
 
