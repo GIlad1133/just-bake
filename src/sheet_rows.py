@@ -12,6 +12,8 @@ COMMUNITY_HEADERS = [
     "image_url", "image_description", "post_type", "my_answer",
     # added 16/09/2026 — lead alerting
     "lead_score", "lead_path", "notified_at", "tg_message_id",
+    # added 30/09/2026 — voice
+    "situation",
 ]
 
 _HEADER_SET = set(COMMUNITY_HEADERS)

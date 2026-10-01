@@ -131,3 +131,61 @@ def write_reply(post_text: str, situation: str, audience: str, canned_name,
         log.warning(f"Draft writing failed: {e}")
         return None, "⚠️ כתיבת הטיוטה נכשלה"
     return (text or None), warning
+
+
+# Used when a row predates the situation column.
+LEAD_PATH_SITUATION = {"order": "lead_order", "event": "lead_order",
+                       "mentoring": "tech_answer", "professional": "tech_answer"}
+BOT_SITUATIONS = {"lead_order", "lead_workshop", "tech_answer", "where_to_buy",
+                  "move_to_dm", "no_answer"}
+RECENT_PER_GROUP = 10
+
+
+def audience_for(group_url: str) -> str:
+    """All monitored groups are taboon/pizza groups. Neighborhood and celiac
+    audiences only exist in the Claude Code skill."""
+    return "taboon_group"
+
+
+def learned_examples(rows: list, known_urls: set) -> list:
+    """Every Gilad reply in the Sheet that is not yet an example. Idempotent:
+    if last run's push failed, the row is simply learned again."""
+    new = []
+    seen = set(known_urls)
+    for r in rows:
+        text = (r.get("my_answer") or "").strip()
+        url = r.get("post_url") or ""
+        if not text or not url or url in seen:
+            continue
+        seen.add(url)
+        situation = r.get("situation")
+        if situation not in BOT_SITUATIONS:
+            situation = LEAD_PATH_SITUATION.get(r.get("lead_path"), "tech_answer")
+        new.append({"id": f"tg-{url}", "situation": situation,
+                    "audience": audience_for(r.get("group_url", "")),
+                    "context": (r.get("post_text") or "")[:1000], "text": text,
+                    "source": "telegram",
+                    "date": r.get("posted_date") or r.get("date_fetched") or "",
+                    "post_url": url, "bot_use": True})
+    return new
+
+
+def append_examples(path: Path, examples: list) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        for e in examples:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+
+def recent_group_replies(rows: list, group_url: str, n: int = RECENT_PER_GROUP) -> list:
+    """Newest last in the Sheet, so walk backwards. Gilad's own text wins over
+    the bot draft for the same post."""
+    out = []
+    for r in reversed(rows):
+        if r.get("group_url") != group_url:
+            continue
+        text = (r.get("my_answer") or "").strip() or (r.get("answer") or "").strip()
+        if text:
+            out.append(text)
+        if len(out) >= n:
+            break
+    return out

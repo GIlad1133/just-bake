@@ -139,3 +139,52 @@ def test_claude_error_warns_and_never_raises():
     draft, warning = write_reply("p", "tech_answer", "taboon_group", None,
                                  _voice([_ex(1), _ex(2)]), FakeClaude(fail=True), "s")
     assert draft is None and "נכשל" in warning
+
+
+from src.voice import learned_examples, append_examples, recent_group_replies
+
+
+def _row(url, my_answer, **kw):
+    base = {"post_url": url, "my_answer": my_answer, "post_text": "הפוסט", "group_url": "g1",
+            "lead_path": "order", "situation": "", "posted_date": "", "date_fetched": "30/09/2026",
+            "answer": ""}
+    return {**base, **kw}
+
+
+def test_new_my_answer_becomes_telegram_example():
+    new = learned_examples([_row("u1", "מוזמן אליי")], known_urls=set())
+    assert new == [{"id": "tg-u1", "situation": "lead_order", "audience": "taboon_group",
+                    "context": "הפוסט", "text": "מוזמן אליי", "source": "telegram",
+                    "date": "30/09/2026", "post_url": "u1", "bot_use": True}]
+
+
+def test_known_url_and_empty_answer_are_skipped():
+    rows = [_row("u1", "x"), _row("u2", "  ")]
+    assert learned_examples(rows, known_urls={"u1"}) == []
+
+
+def test_situation_column_wins_over_lead_path():
+    new = learned_examples([_row("u1", "x", situation="where_to_buy")], known_urls=set())
+    assert new[0]["situation"] == "where_to_buy"
+
+
+def test_same_url_twice_in_rows_is_learned_once():
+    assert len(learned_examples([_row("u1", "a"), _row("u1", "a")], known_urls=set())) == 1
+
+
+def test_append_writes_jsonl(tmp_path):
+    path = tmp_path / "examples.jsonl"
+    path.write_text('{"id": "old"}\n', encoding="utf-8")
+    append_examples(path, [{"id": "new", "text": "שלום"}])
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert json.loads(lines[1]) == {"id": "new", "text": "שלום"}
+
+
+def test_recent_group_replies_prefers_gilads_text_and_limits():
+    rows = [_row(f"u{i}", "", group_url="g1", answer=f"a{i}") for i in range(15)]
+    rows.append(_row("mine", "שלי", group_url="g1", answer="בוט"))
+    rows.append(_row("other", "", group_url="g2", answer="אחר"))
+    recent = recent_group_replies(rows, "g1", n=10)
+    assert recent[0] == "שלי"
+    assert len(recent) == 10
+    assert "אחר" not in recent
