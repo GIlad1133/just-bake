@@ -20,7 +20,7 @@
 {"id": "fb-35", "situation": "lead_workshop", "audience": "taboon_group", "context": "", "text": "300 שקלים לאדם. \nמשך הסדנא כ3 שעות.", "source": "fb_comment", "date": "2025-12-12", "bot_use": true}
 {"id": "fb-36", "situation": "tech_answer", "audience": "taboon_group", "context": "", "text": "רוקבוקס שהוחלף כבר בארק xl", "source": "fb_comment", "date": "2025-12-12", "bot_use": true}
 {"id": "fb-37", "situation": "lead_workshop", "audience": "taboon_group", "context": "", "text": "9-12\nמסיימים עם ארוחה סופר מפנקת של מה שנכין בסדנא 🍕🍕", "source": "fb_comment", "date": "2025-12-12", "bot_use": true}
-{"id": "fb-40", "situation": "move_to_dm", "audience": "taboon_group", "context": "", "text": "Osher Avital שולח הודעה בפרטי\nתודה!", "source": "fb_comment", "date": "2025-12-13", "bot_use": true}
+{"id": "fb-40", "situation": "move_to_dm", "audience": "taboon_group", "context": "", "text": "שולח הודעה בפרטי\nתודה!", "source": "fb_comment", "date": "2025-12-13", "bot_use": true}
 {"id": "fb-41", "situation": "lead_workshop", "audience": "taboon_group", "context": "", "text": "המחיר 300 שקלים לאדם. \nמשתמשים בקמחים ייעודיים לפיצה כמובן.", "source": "fb_comment", "date": "2025-12-15", "bot_use": true}
 {"id": "fb-42", "situation": "own_post_thanks", "audience": "neighborhood", "context": "", "text": "Anonymous participant 815 תודה! מתקן עכשיו 🤣🤣", "source": "fb_comment", "date": "2025-12-23", "bot_use": false}
 {"id": "fb-43", "situation": "own_post_thanks", "audience": "neighborhood", "context": "", "text": "Enav Tsaflawi Shabi תודה רבה 🙏🏼", "source": "fb_comment", "date": "2025-12-23", "bot_use": false}

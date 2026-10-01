@@ -18,9 +18,10 @@ AUDIENCE_BY_BATCH = {1: "taboon_group", 2: "neighborhood", 3: "celiac_group"}
 # comments, not replies, so it must never learn to open with a name: drop the tag line.
 # Checked: for every id below, corpus_fb_comments.json's first line is only a person's
 # name. (fb-82 "היי גיא," is kept as-is: greeting the person who asked by name is
-# Gilad's own style, not a Facebook-inserted tag.) id 40 was excluded: its first line
-# is "Osher Avital שולח הודעה בפרטי", not just a name, so it needs human judgment.
+# Gilad's own style, not a Facebook-inserted tag.)
 REPLY_TAG_IDS = {3, 8, 25, 35, 36, 37, 41, 59, 83, 92}
+# Same tag, but inline on the first line instead of on its own line.
+INLINE_TAGS = {40: "Osher Avital "}
 
 # Refers to another commenter's answer ("התשובה של קובי"); not usable as a standalone
 # bot reply even though it's a good example of Gilad's voice.
@@ -60,6 +61,8 @@ def fb_examples() -> list:
         text = c["text"]
         if cid in REPLY_TAG_IDS:
             text = text.split("\n", 1)[1]
+        if cid in INLINE_TAGS:
+            text = text.removeprefix(INLINE_TAGS[cid])
         text = text.strip()
         bot_use = False if cid in NOT_FOR_BOT_IDS else d.get("bot_use", True)
         out.append({"id": f"fb-{cid}", "situation": situation,
