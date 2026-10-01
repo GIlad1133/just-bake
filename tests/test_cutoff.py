@@ -42,3 +42,11 @@ def test_run_input_has_only_the_four_fields_the_actor_accepts():
     inp = build_run_input(["https://fb.com/groups/1"], "2026-09-28T00:00:00Z")
     assert set(inp) == {"startUrls", "resultsLimit", "viewOption", "onlyPostsNewerThan"}
     assert inp["viewOption"] == "CHRONOLOGICAL"
+
+
+def test_empty_streak_alarm_is_a_day_not_a_morning():
+    """'no_items' means no posts in the window, not blocked. With 7 small groups
+    on a 2h window, all-empty is ordinary — 30/09 produced 5 posts across 9 runs.
+    A threshold of 3 fired on a quiet morning, repeatedly."""
+    from src.community_monitor import EMPTY_STREAK_ALARM
+    assert EMPTY_STREAK_ALARM >= 9, "must exceed one day's runs to mean anything"

@@ -256,7 +256,11 @@ def get_known_posts(ws) -> dict:
 LOOKBACK_MIN_HOURS = 3        # floor: consecutive runs still overlap
 LOOKBACK_MAX_HOURS = 24       # ceiling: a long outage cannot blow the budget
 LOOKBACK_MARGIN_MINUTES = 30  # slack for scheduling delay
-EMPTY_STREAK_ALARM = 3        # consecutive all-groups-unreadable runs before alarming
+# 'no_items' from the actor means "no posts in this window", NOT "blocked" — and
+# with 7 small groups on a 2h window, every group empty is the ORDINARY case
+# (30/09 yielded 5 posts across 9 runs). A streak only means something at the
+# scale of a whole day, and it must alarm ONCE, not on every run after that.
+EMPTY_STREAK_ALARM = 12       # ~24h of consecutive empty runs before alarming
 
 
 def compute_cutoff(last_run_iso: str, now=None) -> str:
@@ -308,10 +312,9 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
     # blocked scrape reported success and pinged the healthcheck green.
     errors = [i for i in items if i.get("error")]
     for e in errors:
-        log.warning(f"Group unreadable: {e.get('inputUrl')} -> "
-                    f"{e.get('error')}: {e.get('errorDescription')}")
+        log.info(f"No posts in window: {e.get('inputUrl')} ({e.get('error')})")
     if errors:
-        log.warning(f"{len(errors)}/{len(group_urls)} groups returned no data")
+        log.info(f"{len(errors)}/{len(group_urls)} groups had nothing new")
 
     valid = [item for item in items if item.get("text") and item.get("url")]
     for item in valid:
@@ -322,7 +325,7 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
             None,
         )
     log.info(f"Got {len(valid)} posts ({sum(1 for p in valid if p.get('image_url'))} "
-             f"with images), {len(errors)} groups unreadable")
+             f"with images), {len(errors)} groups with nothing new")
     return valid, len(errors)
 
 
@@ -722,9 +725,11 @@ def run_monitor():
             empty_streak = 1
     sheet_meta.set_meta(spreadsheet, "empty_streak", empty_streak)
 
-    if empty_streak >= EMPTY_STREAK_ALARM:
-        msg = (f"⚠️ {empty_streak} ריצות רצופות שבהן כל {len(monitoring_groups)} הקבוצות "
-               f"החזירו 'no data'. הסריקה כנראה חסומה, לא שקטה.")
+    # Fire exactly once per streak, as it crosses the line. Repeating it every
+    # run afterwards is what turned one suspicion into a stream of false alarms.
+    if empty_streak == EMPTY_STREAK_ALARM:
+        msg = (f"⚠️ {empty_streak} ריצות רצופות בלי פוסט חדש מאף קבוצה, "
+               f"בערך יממה. כנראה הסריקה שבורה ולא שהקבוצות שקטות.")
         log.error(msg)
         if cfg.get("telegram_token"):
             telegram_notify.send_plain(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
