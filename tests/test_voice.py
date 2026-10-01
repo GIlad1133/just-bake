@@ -65,3 +65,77 @@ def test_same_seed_same_pick_different_seed_varies():
     picks = {tuple(e["id"] for e in select_examples(examples, "tech_answer", "taboon_group", f"p{i}", k=4))
              for i in range(10)}
     assert len(picks) > 1  # variety is a hard requirement
+
+
+from types import SimpleNamespace
+
+from src.voice import Voice, build_messages, write_reply
+
+
+class FakeClaude:
+    def __init__(self, text="טיוטה", fail=False):
+        self.text, self.fail, self.calls = text, fail, []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError("boom")
+        return SimpleNamespace(content=[SimpleNamespace(type="text", text=self.text)])
+
+
+def _voice(examples=None, canned=None):
+    return Voice(rules="כללים", examples=examples or [], canned=canned or {})
+
+
+def test_examples_become_alternating_turns_then_the_post():
+    ex = [_ex(1, context="שאלה 1"), _ex(2, context="")]
+    system, messages = build_messages(_voice(), "הפוסט", ex, recent=[], facts=[])
+    assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant", "user"]
+    assert messages[0]["content"] == "שאלה 1"
+    assert messages[1]["content"] == "t1"
+    assert messages[2]["content"] == "(tech_answer)"   # empty context falls back to the situation
+    assert messages[-1]["content"] == "הפוסט"
+    assert "כללים" in system
+
+
+def test_recent_and_facts_go_into_system():
+    system, _ = build_messages(_voice(), "p", [], recent=["מוזמן אליי לפתח תקווה"], facts=["כדור 300 גרם"])
+    assert "מוזמן אליי לפתח תקווה" in system
+    assert "כדור 300 גרם" in system
+
+
+def test_canned_is_returned_verbatim_without_calling_claude():
+    claude = FakeClaude()
+    voice = _voice(canned={"recipe_48h": {"when": "", "text": "1000 גרם קמח"}})
+    draft, warning = write_reply("p", "tech_answer", "taboon_group", "recipe_48h", voice, claude, "s")
+    assert draft == "1000 גרם קמח" and warning is None
+    assert claude.calls == []
+
+
+def test_no_answer_situation_gives_no_draft():
+    draft, warning = write_reply("p", "no_answer", "taboon_group", None, _voice(), FakeClaude(), "s")
+    assert draft is None and warning is None
+
+
+def test_missing_voice_warns():
+    draft, warning = write_reply("p", "tech_answer", "taboon_group", None, None, FakeClaude(), "s")
+    assert draft is None and "בלי קול" in warning
+
+
+def test_few_examples_warns_but_still_drafts():
+    draft, warning = write_reply("p", "tech_answer", "taboon_group", None, _voice([_ex(1)]), FakeClaude(), "s")
+    assert draft == "טיוטה"
+    assert "אין דוגמאות" in warning
+
+
+def test_enough_examples_no_warning():
+    draft, warning = write_reply("p", "tech_answer", "taboon_group", None,
+                                 _voice([_ex(1), _ex(2), _ex(3)]), FakeClaude(), "s")
+    assert draft == "טיוטה" and warning is None
+
+
+def test_claude_error_warns_and_never_raises():
+    draft, warning = write_reply("p", "tech_answer", "taboon_group", None,
+                                 _voice([_ex(1), _ex(2)]), FakeClaude(fail=True), "s")
+    assert draft is None and "נכשל" in warning
