@@ -54,3 +54,27 @@ def load_voice(path: Path = VOICE_DIR) -> "Voice | None":
         log.warning("voice.md is empty")
         return None
     return Voice(rules=rules, examples=examples, canned=canned)
+
+
+EXAMPLES_PER_DRAFT = 4
+
+
+def _usable(example: dict, situation: str) -> bool:
+    return (example.get("situation") == situation
+            and bool(example.get("text"))
+            and example.get("bot_use", True)
+            and not example.get("ignored"))
+
+
+def select_examples(examples: list, situation: str, audience: str, seed: str,
+                    k: int = EXAMPLES_PER_DRAFT) -> list:
+    """Random, not newest-first: different examples each time is what keeps the
+    drafts from repeating one phrasing. Seeded by the post URL so a given post
+    always gets the same examples (reproducible tests and reruns)."""
+    usable = [e for e in examples if _usable(e, situation)]
+    same = [e for e in usable if e.get("audience") == audience]
+    others = [e for e in usable if e.get("audience") != audience]
+    rng = random.Random(seed)
+    picked = rng.sample(same, min(k, len(same)))
+    picked += rng.sample(others, min(k - len(picked), len(others)))
+    return picked
