@@ -224,3 +224,15 @@ def test_auth_is_on_the_sender_not_the_chat(mocker):
         _update(1, 314244953, "from Gilad in the group")]}
     events, _ = fetch_replies("tok", "314244953", 0)   # owner id, not -5305503048
     assert len(events) == 1
+
+
+def test_expertise_eight_alerts():
+    """Calibration 04/10: 'יש לי בצקים במקפיא כמה זמן לפני צריכים להוציא' scored
+    expertise 8 — a customer holding his product, asking the question he knows
+    best — and missed a threshold of 9 by one point. Historically 8 is 84 posts
+    per 86 days against 17 at 9, so this is the band that carries the volume."""
+    assert should_notify(lead_score=0, expertise_score=8, notified_at="") is True
+
+
+def test_expertise_seven_still_quiet():
+    assert should_notify(lead_score=0, expertise_score=7, notified_at="") is False

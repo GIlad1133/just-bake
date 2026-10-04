@@ -33,7 +33,8 @@ NEGATIVE_REACTIONS = {"\U0001F44E", "\U0001F92E", "\U0001F921"}
 NEUTRAL_REACTIONS  = {"\U0001F440", "\U0001F937", "\U0001FAE1", "\U0001F610", "\U0001F971", "\U0001F4A9"}
 
 LEAD_THRESHOLD = 6   # lowered from 7 on 27/09: a Sukkot event organiser needing 10 pizzas scored 6 and did not alert
-EXPERTISE_THRESHOLD = 9
+EXPERTISE_THRESHOLD = 8   # lowered from 9 on 04/10: a customer with dough in his freezer
+                          # asking how long to thaw scored 8 and never reached Gilad.
 
 PATH_LABELS = {
     "order":        ("🔥", "הזמנה"),
