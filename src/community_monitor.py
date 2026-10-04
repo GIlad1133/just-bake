@@ -286,6 +286,27 @@ def compute_cutoff(last_run_iso: str, now=None) -> str:
 POSTS_PER_GROUP = 5     # coverage cap. At 3 a busy group's overflow was dropped (30/09)
 
 
+ACTIVITY_SWEEP_LIMIT = 5   # per group, once a day — see build_activity_input
+
+
+def build_activity_input(group_urls: list) -> dict:
+    """A second, once-a-day pass over 'newest activity' instead of 'new posts'.
+
+    CHRONOLOGICAL only sees posts by CREATION time. Facebook shows Gilad his
+    groups by RECENT ACTIVITY, which floats older posts back up when they get a
+    new comment — so he keeps seeing live discussions the bot never mentioned.
+    Measured 04/10: this view returned 34 posts absent from the sheet.
+
+    No date filter (activity order makes one meaningless) and a small limit,
+    because Apify bills per post examined and most of these are already known.
+    """
+    return {
+        "startUrls": [{"url": url} for url in group_urls],
+        "resultsLimit": ACTIVITY_SWEEP_LIMIT,
+        "viewOption": "RECENT_ACTIVITY",
+    }
+
+
 def build_run_input(group_urls: list, cutoff: str) -> dict:
     """Apify input. onlyPostsNewerThan filters BEFORE billing (verified 16/09/2026),
     so it is the only lever that stops us re-buying posts already in the sheet."""
@@ -300,9 +321,10 @@ def build_run_input(group_urls: list, cutoff: str) -> dict:
     }
 
 
-def fetch_posts(group_urls: list, apify_token: str, cutoff: str) -> list:
+def fetch_posts(group_urls: list, apify_token: str, cutoff: str,
+                run_input: dict = None) -> list:
     client = ApifyClient(apify_token)
-    run_input = build_run_input(group_urls, cutoff)
+    run_input = run_input or build_run_input(group_urls, cutoff)
     log.info(f"Fetching from {len(group_urls)} groups since {run_input['onlyPostsNewerThan']}")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
@@ -659,6 +681,18 @@ def run_monitor():
     # Fetch posts
     cutoff = compute_cutoff(sheet_meta.get_meta(spreadsheet, "last_run_at", ""))
     posts, unreadable = fetch_posts(monitoring_groups, apify_token, cutoff)
+
+    # Once a day, also sweep by newest ACTIVITY. Dedup drops whatever is already
+    # known, so this costs Apify a little and Claude nothing for repeats.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if sheet_meta.get_meta(spreadsheet, "activity_sweep_day", "") != today:
+        log.info("Daily activity sweep (newest activity, not newest post)")
+        extra, _ = fetch_posts(monitoring_groups, apify_token, cutoff,
+                               run_input=build_activity_input(monitoring_groups))
+        seen = {p.get("url") for p in posts}
+        posts += [p for p in extra if p.get("url") not in seen]
+        sheet_meta.set_meta(spreadsheet, "activity_sweep_day", today)
+        log.info(f"Activity sweep added {len(posts) - len(seen)} candidates")
     claude = anthropic.Anthropic(api_key=anthropic_key)
     saved = updated = alerted = 0
 

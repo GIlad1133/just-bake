@@ -50,3 +50,14 @@ def test_empty_streak_alarm_is_a_day_not_a_morning():
     A threshold of 3 fired on a quiet morning, repeatedly."""
     from src.community_monitor import EMPTY_STREAK_ALARM
     assert EMPTY_STREAK_ALARM >= 9, "must exceed one day's runs to mean anything"
+
+
+def test_activity_sweep_has_no_date_filter_and_a_small_limit():
+    """It scans by newest ACTIVITY, where a creation-date filter is meaningless,
+    and most results are already known — so the limit stays low because Apify
+    bills per post examined."""
+    from src.community_monitor import build_activity_input, ACTIVITY_SWEEP_LIMIT
+    inp = build_activity_input(["https://fb.com/groups/1"])
+    assert inp["viewOption"] == "RECENT_ACTIVITY"
+    assert "onlyPostsNewerThan" not in inp
+    assert inp["resultsLimit"] == ACTIVITY_SWEEP_LIMIT <= 8
