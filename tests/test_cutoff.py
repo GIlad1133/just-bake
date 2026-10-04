@@ -61,3 +61,12 @@ def test_activity_sweep_has_no_date_filter_and_a_small_limit():
     assert inp["viewOption"] == "RECENT_ACTIVITY"
     assert "onlyPostsNewerThan" not in inp
     assert inp["resultsLimit"] == ACTIVITY_SWEEP_LIMIT <= 8
+
+
+def test_logging_survives_an_input_with_no_date_filter(caplog):
+    """The activity sweep has no onlyPostsNewerThan; indexing it crashed the
+    first run after the sweep shipped, after Apify had already been paid."""
+    from src.community_monitor import build_activity_input
+    inp = build_activity_input(["https://fb.com/groups/1"])
+    since = inp.get("onlyPostsNewerThan") or f"(all, {inp.get('viewOption')})"
+    assert "RECENT_ACTIVITY" in since

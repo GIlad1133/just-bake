@@ -325,7 +325,8 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str,
                 run_input: dict = None) -> list:
     client = ApifyClient(apify_token)
     run_input = run_input or build_run_input(group_urls, cutoff)
-    log.info(f"Fetching from {len(group_urls)} groups since {run_input['onlyPostsNewerThan']}")
+    since = run_input.get("onlyPostsNewerThan") or f"(all, {run_input.get('viewOption')})"
+    log.info(f"Fetching from {len(group_urls)} groups since {since}")
     run = client.actor("apify/facebook-groups-scraper").call(run_input=run_input)
     items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
 
