@@ -54,7 +54,8 @@ def test_notify_on_high_expertise():
 
 
 def test_no_notify_below_both_thresholds():
-    assert should_notify(lead_score=5, expertise_score=8, notified_at="") is False
+    """Expertise 8 became an alert on 04/10, so the quiet case is now 7."""
+    assert should_notify(lead_score=5, expertise_score=7, notified_at="") is False
 
 
 def test_lead_six_alerts():
