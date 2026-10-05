@@ -45,11 +45,21 @@ PATH_LABELS = {
 }
 
 
-def should_notify(lead_score: int, expertise_score: int, notified_at: str) -> bool:
-    """One alert per post, ever. An empty notified_at means still eligible."""
+def should_notify(lead_score: int, expertise_score: int, notified_at: str,
+                  post_type: str = "question") -> bool:
+    """One alert per post, ever. An empty notified_at means still eligible.
+
+    A lead alert ignores post_type: a seller is already scored 0 by gate 1.
+    An expertise alert is an invitation to go and answer something, so it
+    requires an actual question — without that guard, dropping the bar to 8
+    surfaced recipe photo captions ("פטריות עם בצל... סן מרזנו צהובות", E8).
+    """
     if (notified_at or "").strip():
         return False
-    return lead_score >= LEAD_THRESHOLD or expertise_score >= EXPERTISE_THRESHOLD
+    if lead_score >= LEAD_THRESHOLD:
+        return True
+    return (expertise_score >= EXPERTISE_THRESHOLD
+            and (post_type or "question") in ("question", ""))
 
 
 def format_alert(post: dict, result: dict, group_name: str) -> str:

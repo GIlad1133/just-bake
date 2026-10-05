@@ -237,3 +237,24 @@ def test_expertise_eight_alerts():
 
 def test_expertise_seven_still_quiet():
     assert should_notify(lead_score=0, expertise_score=7, notified_at="") is False
+
+
+def test_notified_at_is_honoured_so_a_backlog_pass_cannot_double_send():
+    """maybe_alert hardcoded "" here, which made the dedup guard dead and any
+    re-evaluation pass impossible without re-alerting everything."""
+    assert should_notify(lead_score=10, expertise_score=10,
+                         notified_at="05/10/2026 09:00") is False
+
+
+def test_expertise_alert_needs_an_actual_question():
+    """Dropping the expertise bar to 8 surfaced a recipe photo caption
+    ('פטריות עם בצל... סן מרזנו צהובות', E8). An expertise alert means
+    'go answer this', so there has to be a question."""
+    assert should_notify(0, 8, "", post_type="showcase") is False
+    assert should_notify(0, 8, "", post_type="question") is True
+
+
+def test_a_lead_alert_ignores_post_type():
+    """A seller is already scored 0 by gate 1, so lead alerts need no guard —
+    and a buyer's post is sometimes classified 'other'."""
+    assert should_notify(10, 0, "", post_type="other") is True

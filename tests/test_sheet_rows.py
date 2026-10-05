@@ -40,3 +40,25 @@ def test_noise_row_writes_noise_to_status_not_question_type():
     assert row[COMMUNITY_HEADERS.index("score")] == -1
     assert row[COMMUNITY_HEADERS.index("score_reason")] == "למכירה"
     assert row[COMMUNITY_HEADERS.index("lead_score")] == 0
+
+
+def test_a_buyer_mentioning_a_sale_is_not_noise():
+    """'למכירה' anywhere in the body used to kill the post before scoring —
+    140 rows died that way, including buyers who mentioned a sale in passing."""
+    from src.community_monitor import is_noise
+    noise, _ = is_noise({"text": "מחפש בצק נפוליטני, ראיתי משהו למכירה בקבוצה אבל לא התאים"})
+    assert noise is False
+
+
+def test_a_seller_is_left_to_the_model():
+    """Gate 1 in the prompt already scores a seller 0; the filter no longer
+    pre-empts it, so the post still reaches the sheet with a real score."""
+    from src.community_monitor import is_noise
+    noise, _ = is_noise({"text": "למכירה טאבון גוזני xl במצב מעולה"})
+    assert noise is False
+
+
+def test_welcome_posts_are_still_filtered():
+    from src.community_monitor import is_noise
+    noise, why = is_noise({"text": "ברוכים הבאים לקבוצה Yael Mason, Gil Koren"})
+    assert noise is True and "ברוכים" in why

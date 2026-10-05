@@ -45,12 +45,19 @@ def group_name(group_url: str) -> str:
     return "קבוצה"
 
 
-def maybe_alert(post: dict, result: dict, cfg: dict) -> tuple[str, str]:
+def maybe_alert(post: dict, result: dict, cfg: dict,
+                notified_at: str = "") -> tuple[str, str]:
     """Send an alert if the post qualifies. Returns (notified_at, tg_message_id),
-    both empty strings when nothing was sent."""
+    both empty strings when nothing was sent.
+
+    notified_at must be passed through, not hardcoded: the backlog pass calls
+    this for posts already in the sheet, and the dedup guard lives inside
+    should_notify.
+    """
     if not cfg.get("telegram_token") or not cfg.get("telegram_chat_id"):
         return "", ""
-    if not telegram_notify.should_notify(result["lead_score"], result["score"], ""):
+    if not telegram_notify.should_notify(result["lead_score"], result["score"],
+                                        notified_at, result.get("post_type", "question")):
         return "", ""
 
     text = telegram_notify.format_alert(post, result, group_name(post.get("facebookUrl", "")))
@@ -117,6 +124,67 @@ def classify_reply(reply: dict) -> dict:
 
     return ({"kind": "answer", "target": target, "payload": text} if target
             else {"kind": "unclear", "why": "free text with no reply target"})
+
+
+BACKLOG_PER_RUN = 5          # keep a backlog flush from flooding the phone
+BACKLOG_MAX_AGE_DAYS = 7     # Gilad: a post 4+ days old is rarely worth answering
+
+
+def alert_backlog(ws, cfg) -> int:
+    """Alert posts that pass TODAY's thresholds but never alerted.
+
+    maybe_alert only ever ran inside the 'brand new post' branch, so every
+    threshold change and every scoring fix applied only to posts that arrived
+    afterwards. Measured 05/10: 122 rows in the sheet pass the current
+    thresholds and 18 had ever alerted.
+
+    These rows need no re-scoring — their stored scores already qualify. Oldest
+    first, newest-N per run, nothing past BACKLOG_MAX_AGE_DAYS.
+    """
+    if not cfg.get("telegram_token"):
+        return 0
+
+    rows = ws.get_all_values()
+    if len(rows) < 2:
+        return 0
+    headers = rows[0]
+    cutoff = (datetime.now() - timedelta(days=BACKLOG_MAX_AGE_DAYS)).strftime("%Y-%m-%d")
+
+    due = []
+    for i, row in enumerate(rows[1:], start=2):
+        d = dict(zip(headers, row))
+        if (d.get("notified_at") or "").strip() or d.get("status") == "noise":
+            continue
+        if not (d.get("post_text") or "").strip():
+            continue
+        if (str(d.get("post_date") or "")[:10] or "0") < cutoff:
+            continue
+        try:
+            lead, exp = int(d.get("lead_score") or 0), int(d.get("score") or 0)
+        except ValueError:
+            continue
+        if telegram_notify.should_notify(lead, exp, "", d.get("post_type", "question")):
+            due.append((i, d, lead, exp))
+
+    if not due:
+        return 0
+    log.info(f"Backlog: {len(due)} posts qualify but never alerted; sending {min(len(due), BACKLOG_PER_RUN)}")
+
+    sent = 0
+    for row_num, d, lead, exp in sorted(due, key=lambda x: str(x[1].get("post_date")))[:BACKLOG_PER_RUN]:
+        result = {"lead_score": lead, "score": exp,
+                  "lead_path": d.get("lead_path") or "professional",
+                  "post_type": d.get("post_type") or "question",
+                  "answer": d.get("answer")}
+        post = {"text": d.get("post_text"), "url": d.get("post_url"),
+                "facebookUrl": d.get("group_url")}
+        stamp, mid = maybe_alert(post, result, cfg, d.get("notified_at") or "")
+        if mid:
+            ws.update_cell(row_num, COMMUNITY_HEADERS.index("notified_at") + 1, stamp)
+            ws.update_cell(row_num, COMMUNITY_HEADERS.index("tg_message_id") + 1, mid)
+            sent += 1
+    log.info(f"Backlog: sent {sent}")
+    return sent
 
 
 def apply_replies(spreadsheet, ws, cfg) -> int:
@@ -355,26 +423,35 @@ def fetch_posts(group_urls: list, apify_token: str, cutoff: str,
 # ─── Pre-filter (no Claude call needed) ───────────────────────────────────────
 
 # Patterns that are always noise — grows over time as we learn the groups
+# Only structurally content-free posts belong here. Sale words were removed
+# 05/10: "למכירה" anywhere in the body killed 140 posts before scoring,
+# including buyers who mentioned a sale in passing. The model's gate 1 already
+# separates a seller from a buyer, and one Claude call is cheaper than a miss.
 NOISE_PATTERNS = [
-    # Welcome posts
     "ברוכים הבאים לקבוצה",
     "welcome our new members",
     "today marks",
     "let's welcome",
-    # Sales
-    "למכירה",
-    "למסירה",
-    "נמסר",
-    # Ads / promo for other groups
     "הצטרפו לקבוצתנו",
     "הצטרפו לקבוצה",
 ]
 
+# A seller leads with it; a buyer mentions it in passing. Matching "למכירה"
+# anywhere killed 140 posts before scoring, including any buyer who wrote
+# "מחפש בצק, ראיתי משהו למכירה אבל לא התאים".
+NOISE_HEAD_CHARS = 60
+
+
 def is_noise(post: dict) -> tuple[bool, str]:
-    """Returns (True, reason) if post is obvious noise that doesn't need Claude scoring."""
+    """Returns (True, reason) only for posts whose OPENING marks them as noise.
+
+    Scanning the whole body for a sale word is too blunt — the model already
+    distinguishes a seller from a buyer, and it is cheap enough to let it.
+    """
     text = (post.get("text") or "").lower()
+    head = text[:NOISE_HEAD_CHARS]
     for pattern in NOISE_PATTERNS:
-        if pattern.lower() in text:
+        if pattern.lower() in head:
             return True, pattern
     return False, ""
 
@@ -764,6 +841,7 @@ def run_monitor():
                 ]])
                 updated += 1
 
+    alert_backlog(ws, cfg)
     log.info(f"Done. Saved {saved} new posts, updated {updated} existing posts.")
     # A quiet two-hour window legitimately yields zero posts, so one empty run
     # proves nothing. Several in a row while every group is unreadable does.
