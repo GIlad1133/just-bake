@@ -46,7 +46,7 @@ PATH_LABELS = {
 
 
 def should_notify(lead_score: int, expertise_score: int, notified_at: str,
-                  post_type: str = "question") -> bool:
+                  post_type: str = "question", training: bool = False) -> bool:
     """One alert per post, ever. An empty notified_at means still eligible.
 
     A lead alert ignores post_type: a seller is already scored 0 by gate 1.
@@ -56,6 +56,11 @@ def should_notify(lead_score: int, expertise_score: int, notified_at: str,
     """
     if (notified_at or "").strip():
         return False
+    # Training mode: send everything and let Gilad label it with a reaction.
+    # Four attempts at guessing his criteria produced four different wrong
+    # thresholds, so the thresholds come out of his labels instead.
+    if training:
+        return True
     if lead_score >= LEAD_THRESHOLD:
         return True
     return (expertise_score >= EXPERTISE_THRESHOLD

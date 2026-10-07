@@ -57,7 +57,8 @@ def maybe_alert(post: dict, result: dict, cfg: dict,
     if not cfg.get("telegram_token") or not cfg.get("telegram_chat_id"):
         return "", ""
     if not telegram_notify.should_notify(result["lead_score"], result["score"],
-                                        notified_at, result.get("post_type", "question")):
+                                        notified_at, result.get("post_type", "question"),
+                                        training=cfg.get("training", False)):
         return "", ""
 
     text = telegram_notify.format_alert(post, result, group_name(post.get("facebookUrl", "")))
@@ -143,6 +144,11 @@ def alert_backlog(ws, cfg) -> int:
     """
     if not cfg.get("telegram_token"):
         return 0
+    # In training mode every unalerted row qualifies, which at 5/run is ~45 a
+    # day. Label fresh posts only — judgement is sharper on something posted an
+    # hour ago than on a backlog item from last week.
+    if cfg.get("training"):
+        return 0
 
     rows = ws.get_all_values()
     if len(rows) < 2:
@@ -163,7 +169,8 @@ def alert_backlog(ws, cfg) -> int:
             lead, exp = int(d.get("lead_score") or 0), int(d.get("score") or 0)
         except ValueError:
             continue
-        if telegram_notify.should_notify(lead, exp, "", d.get("post_type", "question")):
+        if telegram_notify.should_notify(lead, exp, "", d.get("post_type", "question"),
+                                         training=cfg.get("training", False)):
             due.append((i, d, lead, exp))
 
     if not due:
@@ -735,6 +742,9 @@ def run_monitor():
         "telegram_owner_id": os.getenv("TELEGRAM_OWNER_ID", os.getenv("TELEGRAM_CHAT_ID", "")),
         "dashboard_url": os.getenv("DASHBOARD_URL", "https://just-bake.streamlit.app/Community"),
         "healthcheck_url": os.getenv("HEALTHCHECK_URL", ""),
+        # While on, every post is sent for labelling. Off again once his
+        # reactions define the real thresholds.
+        "training": os.getenv("TRAINING_MODE", "").strip() in ("1", "true", "yes"),
     }
 
     if not all([apify_token, anthropic_key, credentials_json, spreadsheet_id, monitoring_groups]):

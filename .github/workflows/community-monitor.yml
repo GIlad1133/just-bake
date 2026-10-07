@@ -41,6 +41,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_OWNER_ID: ${{ secrets.TELEGRAM_OWNER_ID }}
+          TRAINING_MODE: ${{ secrets.TRAINING_MODE }}
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
           DASHBOARD_URL: https://just-bake.streamlit.app/Community
         run: python -m src.community_monitor

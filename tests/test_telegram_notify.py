@@ -258,3 +258,14 @@ def test_a_lead_alert_ignores_post_type():
     """A seller is already scored 0 by gate 1, so lead alerts need no guard —
     and a buyer's post is sometimes classified 'other'."""
     assert should_notify(10, 0, "", post_type="other") is True
+
+
+def test_training_mode_sends_everything_for_labelling():
+    """Four attempts at guessing Gilad's criteria produced four wrong
+    thresholds. Training mode sends every post so his reactions define them."""
+    assert should_notify(0, 1, "", post_type="showcase", training=True) is True
+    assert should_notify(0, 0, "", post_type="ad", training=True) is True
+
+
+def test_training_mode_still_never_double_sends():
+    assert should_notify(10, 10, "07/10/2026 09:00", training=True) is False
